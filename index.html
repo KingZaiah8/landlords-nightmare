@@ -1,0 +1,2260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Run an apartment building that starts cozy and slowly goes insane.">
+<title>Landlord's Nightmare</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bagel+Fat+One&family=DM+Mono:wght@400;500&family=Figtree:wght@400;500;600;700&display=swap">
+<style>
+/* Base resets (previously supplied by the page host) */
+html{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0}
+img{max-width:100%}
+[hidden]{display:none!important}
+
+/* Layout: a night-or-day street scene. One building cutaway in the middle; each unit is a window that is lit when occupied. */
+:root{
+  --sky:#d3e3ee; --fg:#1b2932; --muted:#52646e; --panel:#f7fafc; --line:#b4c6d2;
+  --wall:#34495a; --wall-fg:#eef4f7; --wall-line:#4a6276;
+  --lit:#ffe7a0; --lit-ink:#2b2210; --lit-muted:#6b5a2c;
+  --unlit:#1f2c36; --unlit-ink:#b6c6d1;
+  --accent:#c93a74; --accent-ink:#ffffff;
+  --good:#2b9a58; --warn:#c98a12; --bad:#cf4038; --offer:#2f7fd0;
+  --display:"Bagel Fat One","Arial Rounded MT Bold",system-ui,sans-serif;
+  --body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"DM Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --sky:#0e161d; --fg:#e4edf2; --muted:#93a6b1; --panel:#17222b; --line:#2c3e4b;
+    --wall:#1c2934; --wall-fg:#e4edf2; --wall-line:#30434f;
+    --unlit:#0c1319; --unlit-ink:#8fa3af;
+    --accent:#ee5d96; --accent-ink:#1a0710; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --sky:#0e161d; --fg:#e4edf2; --muted:#93a6b1; --panel:#17222b; --line:#2c3e4b;
+  --wall:#1c2934; --wall-fg:#e4edf2; --wall-line:#30434f;
+  --unlit:#0c1319; --unlit-ink:#8fa3af;
+  --accent:#ee5d96; --accent-ink:#1a0710; color-scheme:dark;
+}
+/* The accent drifts as the building gets stranger. */
+:root[data-tier="2"]{ --accent:#b0822a }
+:root[data-tier="3"]{ --accent:#7a55d6 }
+:root[data-tier="4"]{ --accent:#12a39a }
+
+*{box-sizing:border-box}
+body{background:var(--sky);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45;padding-inline:16px;padding-block:20px 40px}
+.wrap{max-width:860px;margin-inline:auto;display:flex;flex-direction:column;gap:16px}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+button:disabled{cursor:not-allowed;opacity:.55}
+
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:8px 20px}
+h1{font-family:var(--display);font-weight:400;font-size:clamp(28px,6vw,44px);line-height:1;margin:0;text-wrap:balance;letter-spacing:.01em}
+h1 span{color:var(--accent)}
+.tier{font-family:var(--mono);font-size:13px;color:var(--muted);text-align:right}
+.tier b{display:block;font-family:var(--body);font-size:17px;color:var(--fg)}
+
+.hud{display:grid;grid-template-columns:1fr auto;gap:12px 16px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+.meter{min-width:0}
+.label{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;gap:8px}
+.label span{font-family:var(--mono);font-weight:500;letter-spacing:0;text-transform:none}
+.bar{height:12px;border-radius:6px;background:var(--line);overflow:hidden;margin-top:5px}
+.bar i{display:block;height:100%;width:100%;background:var(--offer);transition:width .25s linear,background-color .4s}
+.till{grid-column:1/-1;font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums;min-width:0;overflow-wrap:anywhere}
+.till b{font-family:var(--body);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-right:8px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:9px 14px;font-weight:600}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+
+/* Building */
+.building{background:var(--wall);color:var(--wall-fg);border-radius:6px 6px 0 0;padding:14px;border-bottom:10px solid var(--wall-line);position:relative}
+.roof{height:14px;margin:0 -6px;background:var(--wall-line);border-radius:4px 4px 0 0}
+.sign{font-family:var(--display);font-size:13px;letter-spacing:.14em;text-transform:uppercase;text-align:center;opacity:.8;padding-bottom:10px}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.unit{position:relative;display:flex;flex-direction:column;min-width:0}
+.unit-main{flex:1;text-align:left;border:4px solid var(--wall-line);border-radius:4px;background:var(--lit);color:var(--lit-ink);padding:6px 6px 10px;display:flex;flex-direction:column;gap:4px;min-height:132px;min-width:0;transition:transform .5s}
+.unit.vacant .unit-main{background:var(--unlit);color:var(--unlit-ink)}
+.unit-main:disabled{opacity:1;cursor:default}
+.room{display:block;width:100%;height:auto;image-rendering:pixelated;image-rendering:crisp-edges;image-rendering:pixelated;border:2px solid rgba(0,0,0,.35);border-radius:2px;margin-bottom:4px}
+.unit-no{font-family:var(--mono);font-size:11px;opacity:.7}
+.unit-name{font-weight:700;font-size:15px;line-height:1.2;overflow-wrap:anywhere}
+.unit-rent{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums}
+.unit-rent.due{font-weight:500;text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:3px}
+.unit-status{font-size:12px;font-weight:600;margin-top:auto}
+.mood{height:8px;border-radius:4px;background:rgba(0,0,0,.18);overflow:hidden}
+.mood i{display:block;height:100%;transition:width .25s linear,background-color .4s}
+.flag{position:absolute;top:-8px;right:-6px;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-family:var(--display);font-size:15px;color:#fff;background:var(--bad);pointer-events:none}
+.flag.offer{background:var(--offer)} .flag.wait{background:var(--warn)}
+.unit.has-issue .flag{animation:bob 1s ease-in-out infinite}
+.evict{margin-top:6px;border:1px solid var(--wall-line);background:transparent;color:var(--wall-fg);border-radius:4px;font-size:12px;padding:4px 6px}
+@keyframes bob{50%{transform:translateY(-4px)}}
+/* Effects stack up as tiers rise; --chaos (tier - 1, capped) scales their strength. */
+body{overflow-x:clip}
+@keyframes flicker{0%,91%,95%,100%{filter:none}92%{filter:brightness(.65)}96%{filter:brightness(.8)}}
+@keyframes wobble{0%,100%{transform:rotate(calc(var(--chaos)*-.35deg))}50%{transform:rotate(calc(var(--chaos)*.35deg)) translateY(calc(var(--chaos)*-1px))}}
+@keyframes glitch{0%,100%{text-shadow:none;transform:none}40%{text-shadow:2px 0 var(--offer),-2px 0 var(--accent);transform:translateX(1px)}70%{text-shadow:-3px 0 var(--offer),3px 0 var(--bad);transform:translateX(-2px) skewX(-4deg)}}
+@keyframes sway{0%,100%{transform:rotate(calc(var(--chaos)*-.12deg))}50%{transform:rotate(calc(var(--chaos)*.12deg))}}
+@keyframes hue{to{filter:hue-rotate(360deg)}}
+@keyframes melt{0%,100%{border-radius:4px}50%{border-radius:38% 8% 34% 12%/14% 36% 10% 40%}}
+@keyframes shake{0%,100%{transform:none}20%{transform:translate(calc(var(--chaos)*-2px),calc(var(--chaos)*1px))}40%{transform:translate(calc(var(--chaos)*2px),calc(var(--chaos)*-1px))}60%{transform:translate(calc(var(--chaos)*-1px),calc(var(--chaos)*2px))}80%{transform:translate(calc(var(--chaos)*1px),0)}}
+.fx-flicker .unit:not(.vacant) .unit-main{animation:flicker 4s infinite}
+.fx-wobble .unit{animation:wobble 3s ease-in-out infinite}
+.fx-wobble .unit:nth-child(2n){animation-delay:-1s}
+.fx-wobble .unit:nth-child(3n){animation-delay:-2s}
+.fx-glitch h1{animation:glitch .9s steps(2) infinite}
+.fx-sway .building{animation:sway 6s ease-in-out infinite}
+.fx-hue .grid{animation:hue 9s linear infinite}
+.fx-melt .unit-main{animation:melt 5s ease-in-out infinite}
+.fx-melt .unit:not(.vacant) .unit-main{animation:flicker 4s infinite,melt 5s ease-in-out infinite}
+.fx-invert .building{animation:sway 6s ease-in-out infinite,hue 4s linear infinite}
+html .wrap.shake{animation:shake .6s linear}
+@keyframes drift{0%,100%{transform:rotate(-1deg)}50%{transform:rotate(1.2deg) translateY(4px)}}
+@keyframes breathe{0%,100%{scale:1}50%{scale:1.03}}
+@keyframes mirror{0%,86%,100%{transform:none}88%,98%{transform:scaleX(-1)}}
+@keyframes strobe{0%,100%{background-color:var(--sky)}25%{background-color:color-mix(in srgb,var(--sky) 65%,#9a55d6)}50%{background-color:color-mix(in srgb,var(--sky) 65%,#12a39a)}75%{background-color:color-mix(in srgb,var(--sky) 65%,#d0433b)}}
+@keyframes ghosting{0%,80%,100%{text-shadow:none}85%{text-shadow:3px 0 var(--accent),-3px 0 var(--offer)}92%{text-shadow:-2px 1px var(--accent),2px -1px var(--offer)}}
+.fx-drift .hud,.fx-drift .board{animation:drift 7s ease-in-out infinite}
+.fx-drift .board{animation-delay:-3s}
+.fx-breathe .building{animation:sway 6s ease-in-out infinite,hue 4s linear infinite,breathe 3s ease-in-out infinite}
+.unit.flipped .unit-main{transform:rotate(180deg)}
+.fx-mirror .tier,.fx-mirror .help,.fx-mirror .board ol{animation:mirror 8s steps(1) infinite}
+.fx-sky body{animation:strobe 10s linear infinite}
+.fx-double .unit-name,.fx-double .unit-rent,.fx-double .board h2,.fx-double .label{animation:ghosting 5s infinite}
+#rain{position:fixed;inset:0;width:100%;height:100%;z-index:8;pointer-events:none;image-rendering:pixelated}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}.unit-main{transition:none}}
+
+/* Event banner: pinned to the top of the screen so it shows wherever you've scrolled. */
+.banner{position:fixed;z-index:9;top:calc(env(safe-area-inset-top, 0px) + 12px);left:50%;translate:-50% 0;width:min(520px,calc(100% - 32px));
+  border:3px solid var(--line);background:var(--panel);color:var(--fg);border-radius:10px;padding:12px 16px;display:flex;flex-direction:column;gap:2px;
+  box-shadow:0 10px 30px rgba(8,14,19,.35);animation:drop .45s cubic-bezier(.2,1.4,.4,1)}
+@keyframes drop{from{transform:translateY(-140%)}to{transform:none}}
+.banner small{font-weight:500}
+.paused *{animation-play-state:paused!important}
+.banner b{font-family:var(--display);font-weight:400;font-size:20px}
+.banner small{font-family:var(--mono);font-size:13px}
+.banner.good{border-color:var(--good)} .banner.good small{color:var(--good)}
+.banner.bad{border-color:var(--bad)} .banner.bad small{color:var(--bad)}
+.banner.chaotic{border-color:var(--warn)} .banner.chaotic small{color:var(--warn)}
+/* Dock: meters pinned to the bottom of the screen so they are always in view. */
+body{padding-bottom:170px}
+.dock{position:fixed;left:0;right:0;bottom:0;z-index:7;background:var(--panel);border-top:2px solid var(--line);padding:8px 16px calc(8px + env(safe-area-inset-bottom, 0px));box-shadow:0 -6px 20px rgba(8,14,19,.18)}
+.dock-in{max-width:860px;margin-inline:auto;display:flex;flex-direction:column;gap:8px}
+.meters{display:flex;flex-wrap:wrap;gap:8px 16px}
+.meters .meter{flex:1 1 150px}
+.quick{display:flex;align-items:center;gap:10px;min-width:0}
+.quick .bar{flex:1;margin:0;min-width:40px}
+.quick .btn{padding:5px 14px}
+.crisis{display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;font-size:13px;min-width:0}
+.crisis b{font-family:var(--display);font-weight:400;font-size:15px;color:var(--bad)}
+.crisis span{color:var(--fg);font-family:var(--mono);font-size:12px}
+.crisis .btn{padding:4px 12px;font-size:13px;border-color:var(--bad)}
+.unit.burning .unit-main{border-color:var(--bad)!important;box-shadow:0 0 0 3px var(--bad),0 0 18px var(--warn)}
+.unit.possessed .unit-main{border-color:#9a55d6!important;box-shadow:0 0 0 3px #9a55d6}
+.unit.tevent .unit-main{box-shadow:0 0 0 3px var(--accent)}
+.unit.ruined .unit-main{background:var(--unlit);color:var(--unlit-ink)}
+.evict.hot{background:var(--bad);color:#fff;border-color:transparent;font-weight:700}
+/* Staff panel: pinned to the right on wide screens, part of the dock otherwise */
+.staff{display:flex;flex-direction:column;gap:6px}
+.staff h2{margin:0;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+#staffList{display:flex;flex-wrap:wrap;gap:6px}
+.emp{flex:1 1 180px;min-width:0;border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:var(--sky);display:grid;grid-template-columns:1fr auto;gap:0 8px;font-size:12px}
+.emp b{font-size:13px;overflow-wrap:anywhere}
+.emp .meta{grid-column:1;color:var(--muted);font-family:var(--mono);font-size:11px}
+.emp .doing{grid-column:1/-1;overflow-wrap:anywhere}
+.emp .doing.alert{color:var(--bad);font-weight:600}
+.emp button{grid-row:1/3;grid-column:2;align-self:start;border:1px solid var(--bad);background:transparent;color:var(--bad);border-radius:5px;font-size:11px;font-weight:700;padding:2px 8px}
+@media (min-width:1340px){.staff{position:fixed;right:16px;top:50%;transform:translateY(-50%);width:230px;background:var(--panel);border:2px solid var(--line);border-radius:10px;padding:10px;box-shadow:0 6px 20px rgba(8,14,19,.18)}#staffList{flex-direction:column}.emp{flex:none}}
+/* Notifications: stacked just above the dock (or down the left side on wide screens), never over the top buttons */
+.notes{position:fixed;z-index:9;left:16px;right:16px;bottom:calc(var(--dockH, 150px) + 10px);display:flex;flex-direction:column;align-items:flex-end;gap:6px;pointer-events:none}
+.note{pointer-events:auto;position:relative;width:min(380px,100%);background:var(--panel);color:var(--fg);border:2px solid var(--line);border-radius:10px;padding:8px 30px 8px 12px;display:flex;flex-direction:column;gap:1px;box-shadow:0 6px 18px rgba(8,14,19,.25);animation:noteIn .3s ease-out}
+.note b{font-family:var(--display);font-weight:400;font-size:16px;line-height:1.15}
+.note span{font-size:13px}
+.note small{font-family:var(--mono);font-size:12px}
+.note.good{border-color:var(--good)} .note.good small{color:var(--good)}
+.note.bad{border-color:var(--bad)} .note.bad small{color:var(--bad)}
+.note.chaotic{border-color:var(--warn)} .note.chaotic small{color:var(--warn)}
+.note .x{position:absolute;top:4px;right:6px;border:0;background:none;color:var(--muted);font-size:18px;line-height:1;padding:2px 4px}
+.notes .note:nth-last-child(n+4){display:none}   /* narrow screens: the 3 newest */
+@media (max-width:1339px){.note{width:min(320px,100%);padding:6px 28px 6px 10px}.note b{font-size:14px}.note span{font-size:12px}}
+@keyframes noteIn{from{transform:translateX(30px);opacity:0}to{transform:none;opacity:1}}
+@media (min-width:1340px){.notes{left:16px;right:auto;bottom:auto;top:50%;transform:translateY(-50%);width:270px;align-items:stretch}.notes .note{width:auto}.notes .note:nth-last-child(n+4){display:flex}}
+.wallet{display:flex;flex-wrap:wrap;gap:4px 14px;font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
+.wallet span{white-space:nowrap}
+.wallet b{font-family:var(--body);font-size:15px;font-weight:700}
+.wallet .broke b{color:var(--bad)}
+.tiny{border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);border-radius:5px;font-size:11px;font-weight:700;padding:1px 8px;text-transform:none;letter-spacing:0}
+.hud .till{grid-column:auto}
+.hud .actions{order:2}
+.board{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.board h2{margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.board ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px;font-size:13px}
+.board li:not(:first-child){color:var(--muted)}
+.help{font-size:13px;color:var(--muted);max-width:65ch}
+
+/* Dialog */
+.scrim{position:fixed;inset:0;background:rgba(8,14,19,.6);display:grid;place-items:center;padding:16px;z-index:10}
+.dialog{background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:12px;padding:20px;width:min(560px,100%);max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:12px}
+.dialog h2{font-family:var(--display);font-weight:400;font-size:24px;line-height:1.1;margin:0;text-wrap:balance}
+.dialog p{margin:0}
+.opts{display:flex;flex-direction:column;gap:8px}
+.opt{text-align:left;border:1px solid var(--line);background:var(--sky);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+.opt:hover{border-color:var(--accent)}
+.opt b{font-weight:700}
+.opt small{font-family:var(--mono);font-size:12px}
+.opt .up{color:var(--good)} .opt .down{color:var(--bad)}
+.mini{display:flex;flex-direction:column;gap:10px}
+.arena{position:relative;height:190px;border:2px dashed var(--line);border-radius:8px;overflow:hidden;background:var(--sky)}
+.arena .target{position:absolute;padding:6px;border:2px solid var(--line);border-radius:8px;background:var(--panel);line-height:0}
+.arena .target canvas{width:42px;height:36px;image-rendering:pixelated}
+.mash{font-size:20px;font-weight:700;padding:26px;border:2px solid var(--accent);border-radius:10px;background:var(--sky)}
+.mini-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.mini-grid button{padding:14px 4px;border:1px solid var(--line);border-radius:8px;background:var(--sky);font-weight:600}
+.dialog .close{align-self:flex-end}
+
+@media (max-width:640px){
+  .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .hud{grid-template-columns:1fr}
+  .actions{justify-content:stretch}.actions .btn{flex:1}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Landlord's <span>Nightmare</span></h1>
+    <div class="tier"><b id="tierName">Tier 1 · Normal</b><span id="tierClock">next tier in 30s</span></div>
+  </header>
+
+  <section class="hud" aria-label="Your status">
+    <div class="actions">
+      <button class="btn primary" id="shop">Shop</button>
+      <button class="btn" id="hireBtn" hidden>Hire staff</button>
+      <button class="btn" id="sound" aria-pressed="true">Sound on</button>
+      <button class="btn" id="music" aria-pressed="true">Music on</button>
+      <button class="btn" id="pause">Start</button>
+    </div>
+    <div class="till"><b>Collected</b><span id="till">nothing yet</span> <span id="rentClock"></span></div>
+  </section>
+
+  <section class="building" aria-label="Your building">
+    <div class="roof"></div>
+    <div class="sign" id="sign">Vacancies · inquire within</div>
+    <div class="grid" id="grid"></div>
+  </section>
+
+
+  <section class="board" aria-live="polite">
+    <h2>Notice board</h2>
+    <ol id="log"></ol>
+  </section>
+
+  <p class="help">Rent comes in on its own every 25 seconds, though tenants sometimes skip it or pay late, more often when unhappy. You can only evict a tenant who did that this cycle. Your sanity and any extra meters stay pinned to the bottom of the screen; later tiers add meters you must keep filled and quick tasks that appear there without pausing the game. Each unit is a little room: tenants wander, nap and pace, and your decisions and random events both leave things behind in it. Click a unit with a red <b>!</b> to deal with its issue: pushing back restores your sanity but upsets the tenant, and indulging them does the opposite. Sanity drains on its own, faster every tier, and every new tier opens another unit. The clock stops while you're reading an issue or choosing an applicant. Every so often the building throws a random event at you, good or bad. Spend what you collect in the shop. Reputation falls when tenants leave, die or are unhappy, or when more than two issues are left open; low reputation makes applicants slow to arrive, and at 0 you are arrested. Pushing back on a tenant now risks a backlash. Click a + to move the next applicant in. Event notifications stack above the bottom bar (or down the left side on wide screens); dismiss any with ×. From tier 8 you can hire staff, who resolve issues their own way; fire anyone whose choices you dislike, and keep an eye on the notice board for anyone plotting against you. Tenants also have lives: they eat, nap, read, exercise and dance, and sometimes start things of their own, like parties that pile issues onto their unit and annoy the neighbours. Stop them from their card, at a cost to their mood. Some choices are risky: a choice marked with a risk may later set the unit on fire, let something possess a tenant, or invite aliens or rats into the building. Choices also count for more each tier past 4. From tier 3, timed minigames interrupt you: win for a bonus, lose for a penalty. The run ends when everyone has moved out or your sanity hits zero.</p>
+</div>
+
+<aside class="dock" aria-label="Meters">
+  <div class="dock-in">
+    <div class="wallet" id="wallet" aria-label="Your money"></div>
+    <aside class="staff" id="staff" aria-label="Your staff" hidden><h2>Staff</h2><div id="staffList"></div></aside>
+    <div class="quick" id="quick" hidden><b id="quickText"></b><div class="bar"><i id="quickBar"></i></div><button class="btn primary" id="quickBtn"></button></div>
+    <div class="crisis" id="cFire" hidden><b>Fire</b><span id="cFireText"></span></div>
+    <div class="crisis" id="cGhost" hidden><b>Possession</b><span id="cGhostText"></span></div>
+    <div class="crisis" id="cAliens" hidden><b>Alien invasion</b><span id="cAliensText"></span><button class="btn" id="bribe"></button></div>
+    <div class="crisis" id="cRats" hidden><b>Rat invasion</b><span id="cRatsText"></span><button class="btn" id="exterminate"></button></div>
+    <div class="meters">
+      <div class="meter"><div class="label">Sanity <span id="sanityNum">100</span></div><div class="bar"><i id="sanityBar"></i></div></div>
+      <div class="meter" id="mOrder" hidden><div class="label">Order <span id="orderNum"></span></div><div class="bar"><i id="orderBar"></i></div></div>
+      <div class="meter" id="mBoiler" hidden><div class="label">Boiler <button class="tiny" id="stoke">Stoke</button></div><div class="bar"><i id="boilerBar"></i></div></div>
+      <div class="meter" id="mExp" hidden><div class="label">Expenses <span id="expNum"></span></div><div class="bar"><i id="expBar"></i></div></div>
+      <div class="meter" id="mCaps" hidden><div class="label">Bottle caps <button class="tiny" id="buyCaps"></button></div><div class="bar"><i id="capsBar"></i></div></div>
+      <div class="meter" id="mRep" hidden><div class="label">Reputation <span id="repNum"></span></div><div class="bar"><i id="repBar"></i></div></div>
+    </div>
+  </div>
+</aside>
+
+<div class="notes" id="notes" aria-live="polite"></div>
+
+<canvas id="rain" aria-hidden="true" hidden></canvas>
+
+<div class="scrim" id="scrim" hidden>
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlgTitle">
+    <h2 id="dlgTitle"></h2>
+    <p id="dlgBody"></p>
+    <div class="opts" id="dlgOpts"></div>
+    <div class="mini" id="mini" hidden></div>
+    <button class="btn close" id="dlgClose">Close</button>
+  </div>
+</div>
+
+<script>
+/* ============ Tuning (same numbers as the Roblox plan where it gives them) ============ */
+const TIER_SECONDS = 40, ISSUE_SECONDS = 8, RENT_SECONDS = 25;
+const DODGE_BASE = 0.03;   // chance a perfectly happy tenant dodges rent at tier 1
+const STALE_GRACE = 15, STALE_DRAIN = 1.5;          // mood/sec once an issue sits too long
+const CRITICAL_MOOD = 20, CRITICAL_LEAVE_CHANCE = 0.10; // per one-second check
+const EVICT_SANITY = 15, APPLICANT_WAIT = [10, 25];
+const TIER_NAMES = ["Normal", "Odd", "Unhinged", "Reality-breaking", "Cosmic", "Bureaucratic", "Post-physical", "Beyond landlording"];
+const tierName = tier => TIER_NAMES[Math.min(tier, TIER_NAMES.length) - 1];
+const ISSUE_FRESH_WEIGHT = 3;   // issues from the newest unlocked tier are this many times likelier than older ones
+const sanityDrain = tier => 0.3 + (tier - 1) * 0.15;
+
+/* ============ Content: plain data tables, like EscalationClock's issue pools ============
+   p = pixel-art prop the choice leaves in the unit, m = tenant mood, s = your sanity (defaults to -m), r = change to their rent,
+   rep = reputation change, risk = a hazard that may go off later (fire, ghost, aliens, rats), cost = Coins from your till, gain = Coins into your till, all = every tenant's mood, cur = they switch currency, evict = tenancy ends. */
+const ISSUES = [
+ {t:1,title:"Leaky Faucet",desc:"{n}'s kitchen faucet has dripped for nine days. They have been counting.",opts:[
+   {p:"toolbox",l:"Fix it yourself",m:10},{p:"puddle",l:"Tell them it's ambient",m:-10},{p:"toolbox",rep:3,l:"Call a plumber",m:12,s:0,cost:30}]},
+ {t:1,title:"Noisy Neighbor",desc:"{n} says someone upstairs is bowling. Nobody upstairs admits to owning a ball.",opts:[
+   {l:"Knock on doors all evening",m:8},{p:"bowling",l:"Hand over earplugs",m:-8},{l:"Host a mediation night",m:6,all:3,s:-6,rep:4}]},
+ {t:1,title:"Late Rent Excuse",desc:"{n} can't pay on time because their goldfish is going through something.",opts:[
+   {p:"fishbowl",l:"Grant an extension",m:10},{rep:-2,l:"Rent is rent",m:-12},{l:"Offer a payment plan",m:6,s:2,r:-5,rep:3}]},
+ {t:1,title:"Broken Thermostat",desc:"{n}'s thermostat is stuck on 31°C. They now call the unit the terrarium.",opts:[
+   {p:"fan",risk:"fire",l:"Rewire it yourself",m:10},{p:"cactus",rep:-1,l:"Suggest shorts",m:-10},{p:"fan",rep:2,l:"Buy a new thermostat",m:10,s:0,cost:20}]},
+ {t:1,title:"Parking Dispute",desc:"{n} insists somebody keeps parking a canoe in their spot.",opts:[
+   {p:"cone",l:"Mediate at length",m:8},{p:"canoe",l:"Rule the canoe grandfathered in",m:-9}]},
+
+ {t:2,title:"Haunted Apartment",desc:"{n} reports a ghost in the hall closet. The ghost has opinions about the heating.",opts:[
+   {p:"candles",risk:"fire",l:"Hold a small exorcism",m:12,s:-14},{p:"ghost",l:"Ghosts aren't on the lease",m:-12},{p:"ghost",risk:"ghost",l:"Charge the ghost rent",m:-4,r:15,s:-6},{risk:"ghost",l:"Sell haunted tours",m:-6,gain:150,rep:-4}]},
+ {t:2,title:"Cheese-Aging Operation",desc:"{n} is aging forty wheels of gruyère in the bathtub. The hallway knows.",opts:[
+   {p:"cheese",risk:"rats",l:"Accept a wheel as apology",m:10},{l:"Shut it down",m:-14},{p:"cheese",risk:"rats",rep:-3,l:"Take a cut of the business",m:2,r:20,s:-10},{l:"Report it to the health inspector",m:-18,s:10,rep:4}]},
+ {t:2,title:"Rent Paid in Pennies",desc:"{n} has delivered this month's rent as a wheelbarrow of pennies.",opts:[
+   {p:"pennies",l:"Count them together",m:8,s:-10,cur:"Pennies"},{l:"Demand real money",m:-12}]},
+ {t:2,title:"Ghost Roommate Request",desc:"{n} wants to add a roommate to the lease. The roommate died in 1974.",opts:[
+   {p:"ghost",risk:"ghost",l:"Add them to the lease",m:12,s:-15},{l:"Living tenants only",m:-10}]},
+ {t:2,title:"Unauthorized Rooftop Garden",desc:"{n} planted corn on the roof. It is doing suspiciously well.",opts:[
+   {p:"corn",risk:"rats",l:"Let it grow",m:10},{l:"Mow the roof",m:-12}]},
+
+ {t:3,title:"Raccoon Unionization",desc:"The raccoons in {n}'s walls have formed Local 404 and elected {n} shop steward.",opts:[
+   {p:"raccoon",l:"Negotiate in good faith",m:14,s:-16},{p:"trash",rep:-6,l:"Bust the union",m:-16},{p:"raccoon",rep:2,l:"Pay them off",m:8,s:4,cost:60},{l:"Recognise the union officially",m:10,all:4,s:-14,rep:8}]},
+ {t:3,title:"The Building Wants a Raise",desc:"The building has started speaking through {n}'s radiator. It wants a raise.",opts:[
+   {p:"eye",l:"Give the building a raise",m:10,s:-8,cost:50},{l:"Buildings don't get wages",m:-14},{l:"Leak the story to the press",m:-6,s:4,gain:120,rep:-6}]},
+ {t:3,title:"A Small Gathering",desc:"{n} is hosting a small gathering of ninety robed people who hum.",opts:[
+   {p:"cultist",risk:"fire",l:"Attend, just once",m:15,s:-20},{l:"No humming after 10 PM",m:-15},{l:"Give up on this tenancy",evict:true,s:10},{l:"Report them to the authorities",m:-20,s:12,rep:3}]},
+ {t:3,title:"Dead for Six Years",desc:"{n} calmly mentions they have been dead for six years and would like that reflected in the rent.",opts:[
+   {p:"grave",l:"Offer the deceased discount",m:14,r:-20,s:-18},{l:"Death doesn't break a lease",m:-12,s:6}]},
+ {t:3,title:"The Portrait That Watches",desc:"A portrait in {n}'s hallway follows people with its eyes. It has started blinking in Morse code.",opts:[
+   {p:"portrait",risk:"ghost",l:"Decode the message",m:10,s:-18},{l:"Turn it to face the wall",m:-10}]},
+
+ {t:4,title:"Rent Paid in Vibes",desc:"{n} now pays exclusively in Vibes. This month's are, they say, immaculate.",opts:[
+   {p:"vibes",l:"Accept the Vibes",m:15,s:-15,cur:"Vibes"},{l:"Vibes aren't legal tender",m:-18}]},
+ {t:4,title:"Time-Loop Complaint",desc:"{n} files a noise complaint. Then files it again. They say this is the first time.",opts:[
+   {p:"clock",l:"Resolve it every time",m:14,s:-22},{l:"Ignore all of them",m:-16}]},
+ {t:4,title:"The IRS (Aliens)",desc:"Auditors from the IRS have landed on the roof and are probing {n}'s deductions.",opts:[
+   {p:"alien",risk:"aliens",l:"Cooperate fully",m:12,s:-10,cost:80},{rep:-4,l:"Claim diplomatic immunity",m:-14,s:10},{l:"Offer them the tenant",evict:true,s:14}]},
+ {t:4,title:"The Loop in the Hallway",desc:"The hallway outside {n}'s unit now leads back to itself. {n} has been walking home since Tuesday.",opts:[
+   {p:"portal",l:"Charge for the extra square footage",m:-10,r:25},{l:"Comp their rent",m:12,r:-25,s:-6},
+   {l:"Let the hallway keep them",evict:true,s:12},{p:"portal",l:"Walk the loop with them",m:25,s:-40}]},
+ {t:4,title:"A Second You Moves In",desc:"{n} says a second you moved in next door and is a much better landlord.",opts:[
+   {p:"clone",l:"Take notes from yourself",m:12,s:-22},{l:"Evict yourself",m:-14,s:8}]},
+
+ // ---- More tier 1: mundane ----
+ {t:1,title:"Squeaky Door",desc:"{n}'s door squeaks in a tone they describe as accusatory.",opts:[
+   {p:"toolbox",l:"Oil it yourself",m:8},{l:"Call it character",m:-8},{l:"Replace every door in the building",m:12,all:3,s:0,cost:90,rep:5}]},
+ {t:1,title:"Missing Package",desc:"{n}'s package says delivered. It was delivered to a tree.",opts:[
+   {l:"Climb the tree",m:10,s:-12},{l:"Blame the tree",m:-9},{l:"Install parcel lockers",m:10,s:0,cost:60,rep:5}]},
+ {t:1,title:"Too Many House Plants",desc:"{n} owns 212 plants. The humidity is now a weather system.",opts:[
+   {p:"cactus",l:"Admire them",m:10},{l:"One plant per room",m:-12},{p:"fan",rep:2,l:"Buy a dehumidifier",m:8,s:0,cost:25}]},
+ {t:1,title:"The 5 AM Alarm",desc:"An alarm goes off next to {n}'s wall at 5 AM. The neighbour moved out in March.",opts:[
+   {p:"clock",l:"Find the alarm",m:10,s:-8},{l:"Suggest getting up earlier",m:-10}]},
+ {t:1,title:"Mystery Smell",desc:"{n} reports a smell like a library that fell into soup.",opts:[
+   {p:"trash",l:"Investigate",m:10},{l:"Deny that smells exist",m:-10}]},
+ {t:1,title:"Wi-Fi Name Dispute",desc:"{n} wants the building Wi-Fi renamed from LandlordIsWatching.",opts:[
+   {l:"Rename it",m:8},{l:"It's a joke. Mostly.",m:-8}]},
+ {t:1,title:"Bike in the Hallway",desc:"{n} has parked a tandem bicycle in the hallway. They live alone.",opts:[
+   {rep:2,l:"Build a bike rack",m:10,s:0,cost:25},{l:"Remove the bike",m:-10}]},
+ {t:1,title:"Thin Walls",desc:"{n} can hear their neighbour thinking. It's probably just the walls.",opts:[
+   {rep:3,l:"Soundproof the wall",m:14,s:0,cost:40},{l:"Recommend headphones",m:-8},{rep:2,l:"Introduce the neighbours",m:6,all:4}]},
+
+ // ---- More tier 2: odd ----
+ {t:2,title:"Suspicious Renovation",desc:"{n} knocked down a wall. They say it was only emotionally load-bearing.",opts:[
+   {l:"Approve it after the fact",m:12,s:-10},{p:"toolbox",rep:2,l:"Rebuild the wall",m:-4,s:6,cost:60}]},
+ {t:2,title:"The Compost Situation",desc:"{n}'s compost bin has reached a temperature usually found in stars.",opts:[
+   {p:"trash",risk:"rats",l:"Admire it from a distance",m:10,s:-8},{l:"Confiscate it",m:-12}]},
+ {t:2,title:"A Wall of Clocks",desc:"{n} has hung forty clocks, each set to a different wrong time.",opts:[
+   {p:"clock",l:"Let them keep time",m:10},{l:"Standard time only",m:-10}]},
+ {t:2,title:"Bathtub Pet",desc:"{n} has adopted something that lives in the bathtub. It's probably a fish.",opts:[
+   {p:"fishbowl",l:"Let it stay",m:10,s:-8},{l:"Call animal control",m:-12},{l:"Charge a pet deposit",m:-5,r:10}]},
+ {t:2,title:"Rent in Bottle Caps",desc:"{n} offers rent in bottle caps, which they call the currency of the future.",opts:[
+   {l:"Accept the caps",m:8,cur:"BottleCaps"},{l:"Refuse",m:-10}]},
+ {t:2,title:"Neighbourhood Watch",desc:"{n} has started a neighbourhood watch. It only watches you.",opts:[
+   {l:"Join it",m:12,s:-12},{l:"Disband it",m:-12},{l:"Bribe the captain",m:6,s:4,cost:30},{l:"Thank them publicly",m:8,s:-4,rep:6}]},
+ {t:2,title:"The Pigeon Coalition",desc:"The pigeons on {n}'s balcony have started holding elections.",opts:[
+   {l:"Recognise their government",m:12,s:-14},{rep:-3,l:"Install spikes",m:-12}]},
+ {t:2,title:"Haunted Toaster",desc:"{n}'s toaster will only toast bread that has a face in it.",opts:[
+   {l:"Replace the toaster",m:10,s:0,cost:30},{p:"ghost",risk:"ghost",l:"Call it a feature",m:-8}]},
+
+ // ---- More tier 3: unhinged ----
+ {t:3,title:"Seance Noise Complaint",desc:"{n} says the seance next door keeps summoning things into their kitchen.",opts:[
+   {p:"candles",risk:"fire",rep:3,l:"Hire a professional medium",m:12,s:0,cost:50},{p:"ghost",risk:"ghost",l:"Ask the spirits to keep it down",m:8,s:-16},{l:"Ignore it",m:-14}]},
+ {t:3,title:"The Mirror Dispute",desc:"{n}'s reflection has stopped copying them and wants its own lease.",opts:[
+   {p:"clone",l:"Give it a lease",m:6,r:20,s:-14},{l:"Cover every mirror",m:-12}]},
+ {t:3,title:"Communal Nightmare",desc:"The whole building had the same dream about {n}. {n} won't say what they did in it.",opts:[
+   {l:"Hold a building meeting",m:10,all:-5,s:-10},{l:"Pretend it didn't happen",m:-10},{l:"Ask {n} to leave",evict:true,s:10}]},
+ {t:3,title:"Moss Has Rights",desc:"The moss in {n}'s bathroom has filed for tenancy.",opts:[
+   {p:"corn",l:"Recognise the moss",m:12,s:-14},{l:"Bleach it",m:-14}]},
+ {t:3,title:"The Basement Door",desc:"{n} found a door in the basement. Behind it is another basement.",opts:[
+   {p:"portal",risk:"ghost",l:"Explore it together",m:14,s:-20},{l:"Brick it up",m:-6,s:8,cost:40}]},
+ {t:3,title:"Raccoon Sublet",desc:"A raccoon is subletting {n}'s closet and collecting rent from other raccoons.",opts:[
+   {p:"raccoon",risk:"rats",l:"Take a cut",m:4,r:15,s:-12},{l:"Evict the raccoon",m:-10}]},
+ {t:3,title:"Literary Mould",desc:"The mould in {n}'s kitchen has written a short story. It's quite good.",opts:[
+   {l:"Get it published",m:10,s:-14,gain:150},{l:"Clean the kitchen",m:-12}]},
+ {t:3,title:"Grandma in the Walls",desc:"{n} insists their grandmother lives in the walls and would like a discount.",opts:[
+   {p:"ghost",risk:"ghost",l:"Discount for Grandma",m:12,r:-15,s:-12},{l:"Grandma is not on the lease",m:-12},{rep:-6,l:"Evict the whole family",evict:true,s:12}]},
+
+ // ---- More tier 4: reality-breaking ----
+ {t:4,title:"The Rent Ouroboros",desc:"{n} paid this month's rent with next month's, which was paid with this month's.",opts:[
+   {p:"clock",l:"Accept the loop",m:14,s:-20,gain:200},{l:"Demand linear money",m:-16}]},
+ {t:4,title:"Tenant From a Cancelled Timeline",desc:"{n} says their timeline was cancelled and asks to stay in this one.",opts:[
+   {l:"Let them stay",m:14,s:-18},{l:"Send them back",evict:true,s:14},{l:"Charge a timeline fee",m:-8,r:30}]},
+ {t:4,title:"The Building's Ex",desc:"The building's ex has moved into {n}'s unit and things are awkward.",opts:[
+   {l:"Mediate the breakup",m:14,all:5,s:-22},{l:"Take the building's side",m:-14,s:8}]},
+ {t:4,title:"Gravity Complaint",desc:"Gravity in {n}'s unit now points at the ceiling.",opts:[
+   {rep:5,l:"Fix gravity",m:12,s:0,cost:120},{l:"Rotate the furniture",m:10,s:-16},{l:"Call it a loft",m:-14}]},
+ {t:4,title:"Mail From Yourself",desc:"{n} keeps receiving letters addressed to you, from you, dated next year.",opts:[
+   {p:"paper",l:"Read them",m:10,s:-24},{l:"Return to sender",m:-12}]},
+ {t:4,title:"Weather Indoors",desc:"It is raining inside {n}'s unit, but only on {n}.",opts:[
+   {p:"puddle",rep:2,l:"Buy them an umbrella",m:12,s:0,cost:30},{p:"puddle",l:"Free water is free water",m:-14},{l:"Sue the cloud",m:-4,s:6,gain:100,rep:-3}]},
+ {t:4,title:"Rent in Teeth",desc:"{n} offers this month's rent in teeth. They won't say whose.",opts:[
+   {l:"Accept the teeth",m:12,s:-16,cur:"Teeth"},{l:"Absolutely not",m:-14}]},
+ {t:4,title:"The Elevator Goes Sideways",desc:"The elevator now travels sideways, straight into {n}'s unit.",opts:[
+   {rep:-3,l:"Charge elevator fees",m:-10,r:25,all:-3},{l:"Close the elevator",m:-10,s:4},{p:"portal",risk:"aliens",l:"Ride it",m:16,s:-22}]},
+
+ // ---- Tier 5: cosmic ----
+ {t:5,title:"A Small Star",desc:"{n} is keeping a small star in a jar. The jar is getting warm.",opts:[
+   {p:"vibes",risk:"fire",l:"Let them keep it",m:16,s:-18},{l:"Return it to the sky",m:-6,s:10,cost:100},{rep:-4,l:"Sell it",m:-16,gain:500}]},
+ {t:5,title:"The Moon Applies",desc:"The moon has applied to move in next to {n}. {n} is worried about the tides.",opts:[
+   {risk:"aliens",l:"Approve the moon",m:10,all:-6,r:20,s:-14},{l:"Reject the moon",m:-12,s:6}]},
+ {t:5,title:"Constellation Graffiti",desc:"{n} rearranged the stars outside their window into a rude word.",opts:[
+   {l:"Make them put it back",m:-14},{p:"portrait",l:"Frame the view",m:14,s:-20}]},
+ {t:5,title:"Dense Unit",desc:"{n}'s unit has become so dense that the furniture now owes rent.",opts:[
+   {rep:-2,l:"Collect from the furniture",m:-6,s:-10,gain:250},{l:"Lighten the unit",m:12,s:0,cost:150}]},
+ {t:5,title:"Background Radiation",desc:"{n} complains about the hum of the universe. They're right, it is loud.",opts:[
+   {l:"Turn down the universe",m:14,s:-24},{p:"bowling",l:"Earplugs again",m:-12}]},
+ {t:5,title:"Asteroid Delivery",desc:"An asteroid landed on {n}'s balcony with a note: for the landlord.",opts:[
+   {p:"scorch",risk:"fire",l:"Accept the gift",m:4,s:-14,gain:400},{l:"Send it back",m:-10,s:8}]},
+ {t:5,title:"The Void Moves In",desc:"The void has moved in with {n}. It's very quiet, which is the problem.",opts:[
+   {p:"portal",l:"Charge the void rent",m:-6,r:30,s:-12},{l:"Make the introductions",m:14,s:-20},{l:"Let {n} go with the void",evict:true,s:16}]},
+ {t:5,title:"Alien Tour Groups",desc:"{n} is running tours of the building for aliens. They photograph you.",opts:[
+   {p:"alien",risk:"aliens",l:"Take a cut",m:6,s:-16,gain:300},{rep:-2,l:"Ban tourism",m:-14},{risk:"aliens",l:"Run official tours",m:8,s:-10,gain:200,rep:5}]},
+
+ // ---- Tier 6: bureaucratic ----
+ {t:6,title:"Form 27-B Stroke Infinity",desc:"{n} needs you to sign the form that approves the form that lets you sign forms.",opts:[
+   {p:"paper",l:"Sign everything",m:14,s:-24},{l:"Refuse on principle",m:-16,s:6},{rep:3,l:"Hire a notary",m:10,s:0,cost:120}]},
+ {t:6,title:"The Lease Renews Itself",desc:"{n}'s lease renewed itself 400 times overnight. It now runs until the heat death of the universe.",opts:[
+   {l:"Honour it",m:14,r:15,s:-16},{p:"paper",rep:-4,l:"Shred it",m:-18,s:10}]},
+ {t:6,title:"Audit of the Soul",desc:"Spiritual auditors want to review {n}'s moral expenses.",opts:[
+   {rep:4,l:"Cooperate",m:14,s:-6,cost:150},{l:"Claim {n} as a dependent",m:-14,s:-4,gain:200}]},
+ {t:6,title:"The Tenants' Committee",desc:"{n} formed a tenants' committee. It has subcommittees. One is about you.",opts:[
+   {l:"Attend every meeting",m:14,all:6,s:-24},{l:"Ignore the committee",m:-16,all:-6},{l:"Give them a seat on the board",m:16,all:8,s:-20,rep:10}]},
+ {t:6,title:"Rent Control Ghost",desc:"The ghost of a rent control officer is reviewing {n}'s lease.",opts:[
+   {p:"ghost",rep:5,l:"Lower the rent",m:14,r:-30,s:-10},{p:"ghost",risk:"ghost",l:"Argue with the ghost",m:-12,s:-6}]},
+ {t:6,title:"Breathing Permit",desc:"The city says {n} needs a permit to breathe indoors, and you have to issue it.",opts:[
+   {p:"paper",l:"Issue the permit",m:12,s:-14},{rep:-4,l:"Charge for the permit",m:-12,r:20},{l:"Fight the city on their behalf",m:14,s:-10,cost:100,rep:7}]},
+ {t:6,title:"The Queue",desc:"There is a queue outside {n}'s door. Nobody knows what it's for. It's getting longer.",opts:[
+   {l:"Join the queue",m:10,s:-22},{l:"Disperse it",m:-14},{rep:-4,l:"Sell tickets",m:-10,gain:250}]},
+ {t:6,title:"Bureau of Missing Socks",desc:"{n} filed a claim with the Bureau of Missing Socks. It wants to inspect the building.",opts:[
+   {rep:6,l:"Pass the inspection",m:12,s:4,cost:100},{rep:-5,l:"Hide the socks",m:-10,s:-12}]},
+
+ // ---- Tier 7: post-physical ----
+ {t:7,title:"{n} Is Now Three People",desc:"{n} has split into three people, all of whom want separate leases.",opts:[
+   {p:"clone",rep:-5,l:"Charge triple rent",m:-10,r:40,s:-14},{l:"Merge them back",m:-14,s:-10},{p:"clone",l:"Welcome all three",m:16,s:-26}]},
+ {t:7,title:"The Building Is Dreaming",desc:"The building has fallen asleep, and {n}'s unit is what it's dreaming about.",opts:[
+   {l:"Wake the building",m:-14,s:8},{p:"vibes",l:"Let it dream",m:16,all:5,s:-24}]},
+ {t:7,title:"A Colour That Doesn't Exist",desc:"{n} painted their unit a colour that doesn't exist. Guests forget their own names.",opts:[
+   {l:"Repaint it",m:-6,s:10,cost:100},{p:"vibes",l:"Learn to love it",m:14,s:-22}]},
+ {t:7,title:"Sound Has Stopped",desc:"Nobody has heard a sound in {n}'s unit since Thursday.",opts:[
+   {l:"Bring a radio",m:12,s:-12},{l:"Enjoy the quiet",m:-12,s:10}]},
+ {t:7,title:"Inside-Out Apartment",desc:"{n}'s unit is now outside, and the outside is in their unit.",opts:[
+   {l:"Charge for the view",m:-10,r:30,s:-10},{rep:4,l:"Turn it right side in",m:14,s:0,cost:200},{p:"portal",l:"Live with it",m:16,s:-26}]},
+ {t:7,title:"The Echo Tenant",desc:"{n}'s echo has started answering back, with better arguments.",opts:[
+   {p:"clone",l:"Side with the echo",m:12,s:-20},{l:"Side with {n}",m:-12,s:-6}]},
+ {t:7,title:"Memory Leak",desc:"{n} keeps forgetting the building exists while standing inside it.",opts:[
+   {p:"paper",l:"Put up signs everywhere",m:12,s:-12},{l:"Remind them with a rent increase",m:-14,r:20}]},
+ {t:7,title:"Time Has Pooled",desc:"Time has pooled in a corner of {n}'s unit. Anything that touches it gets old.",opts:[
+   {p:"clock",l:"Mop it up",m:12,s:-18},{p:"clock",rep:-3,l:"Charge admission",m:-12,gain:300}]},
+
+ // ---- Tier 8: beyond landlording ----
+ {t:8,title:"The Building Applies",desc:"The building has applied to rent a unit inside itself, next to {n}.",opts:[
+   {p:"eye",l:"Approve its application",m:14,all:6,s:-28},{l:"Deny it",m:-16}]},
+ {t:8,title:"You Are the Issue",desc:"{n} has filed an issue about you. You are the issue.",opts:[
+   {rep:8,l:"Fix yourself",m:16,s:10,cost:150},{l:"Dispute the issue",m:-18,s:-10}]},
+ {t:8,title:"The Final Rent",desc:"{n} offers to pay all rent for everyone, forever, in exchange for the building.",opts:[
+   {rep:-15,l:"Accept",all:-12,s:-30,gain:2000},{l:"Refuse",m:-16,s:8},{l:"Offer half the building",m:8,s:-18,gain:800}]},
+ {t:8,title:"Unit Zero",desc:"{n} found Unit 0. It's bigger than the building, and someone is already paying rent there.",opts:[
+   {p:"portal",risk:"aliens",l:"Collect from Unit 0",s:-24,gain:600},{l:"Seal it",m:-14,s:10}]},
+ {t:8,title:"The Narrator",desc:"{n} complains they can hear someone narrating their life. It's you.",opts:[
+   {l:"Narrate nicer things",m:18,s:-26},{l:"Narrate them moving out",evict:true,s:16},{l:"Stop narrating",m:-16},{l:"Publish it as a memoir",m:-8,s:-10,gain:600,rep:-6}]},
+ {t:8,title:"The Hallway Goes Everywhere",desc:"{n}'s hallway now leads everywhere. Mail is arriving from 1832.",opts:[
+   {p:"paper",l:"Charge postage",m:-12,r:30},{rep:4,l:"Close every door but one",m:14,s:0,cost:200},{p:"portal",l:"Walk it forever",m:22,s:-38}]},
+ {t:8,title:"Rent in Feelings",desc:"{n} wants to pay rent in feelings. They've brought a lot of them.",opts:[
+   {l:"Accept the feelings",m:18,s:-24,cur:"Vibes"},{l:"Ask for Coins",m:-18}]},
+ {t:8,title:"The Previous Landlord",desc:"{n} says the previous landlord never left. He's in the walls, giving advice.",opts:[
+   {p:"ghost",risk:"ghost",l:"Take his advice",m:14,all:6,s:-22},{p:"candles",rep:4,l:"Hire an exorcist",m:-6,s:16,cost:200}]},
+];
+
+// Applicant names by tier. Every tier up to the current one is in the pool, and the newest tier's names are the likeliest.
+const NAMES = {
+ 1:["Kevin","Brenda","Doreen","Harold","Wanda","Stan","Bernice","Clyde","Ruthie","Mort","Delores","Barb",
+    "Gail","Duane","Linda","Roger","Shirley","Dale","Patty","Lonnie","Marge","Terry","Darlene","Phil",
+    "Joyce","Earl","Rhonda","Gus","Cheryl","Norm","Tammy","Vince"],
+ 2:["Cornelius","Bathsheba","Grimsby","Petunia","Chester","Mavis","Barnaby","Hepzibah","Thaddeus","Ignatius",
+    "Prudence","Mortimer","Cressida","Ebenezer","Philomena","Horatio","Winifred","Bartholomew","Ottoline","Lucius",
+    "Agatha Crumb","Dr. Fennimore (Not That Kind)","Uncle Basil","Ms. Pringle","Old Tobias","Rosalind Wick",
+    "The Brothers Hobb","Mr. Ninety Cats"],
+ 3:["The Upstairs Situation","Brother Static","Doug (Not His Real Name)","The Fourth Wendell","Persimmon","A Second Barb",
+    "The Thing In 4B","The Loud Silence","Cousin Static","Wendell's Ghost","The Understudy Raccoon","Mister Damp",
+    "A Man Made of Bees","Sister Hum","Gerald's Shadow","The Whistler","Someone In A Trenchcoat","Three Kids, Stacked",
+    "The Draught","Mrs. Behind-You","Barry (Plural)","The Tall Visitor","Moth Prophet","Whoever Keeps Knocking"],
+ 4:["Unit 7, Probably","A Doreen From Later","Something Wearing Kevin","Tuesday's Chad","Auditor Zzzk","THE LANDLORD (Allegedly)",
+    "Gary From Next Year","The Concept of Linda","A Kevin, Recursively","Not-Mildred","Error 404: Tenant","The Final Barb",
+    "Yesterday's Doug","A Hole Shaped Like Phil","Chad, Reversed","Somebody's Echo","The Last Wendell","Mildred (Again)",
+    "Zorp","The Previous You"],
+ 5:["Comet Henderson","A Small Star Named Pam","Nebula Dave","The Moon's Cousin","Orbiting Steve","Halley (Late Again)",
+    "Dr. Gravity","Space Barb","Constellation Kevin","Meteor Mildred","The Dark Matter","Andromeda Jones",
+    "Professor Big Bang","Saturn's Ex","A Polite Black Hole","Eclipse Gary","Supernova Sue","Cosmic Ray",
+    "Light-Year Linda","The Voice From Orbit"],
+ 6:["Form 27-B","Clause Fourteen","The Subcommittee","Notary Public #9","Pending Review","Mr. Stamp",
+    "Applicant (Unnamed)","Sub-Clause Steve","The Appeals Process","Ms. Red Tape","Deputy Assistant Doug","Box Seven, Initialled",
+    "Exhibit A","Gary, Under Review","The Waiting Room","Paperclip Patricia","Triplicate Tom","Case Number 0000",
+    "The Committee Chair","Minutes Of The Last Meeting"],
+ 7:["Three Garys At Once","A Colour You Can't See","The Echo Of Brenda","Mostly Air","A Pause","The Smell of Rain",
+    "Whatever Kevin Was","Sound Of A Door","An Empty Coat","The Feeling of Being Watched","Half A Doreen","Tomorrow",
+    "A Draft Of Chad","The Space Between Units","Static, Fully Grown","Someone You Forgot","Unit Mildred","The Hum",
+    "A Rumour","Thursday"],
+ 8:["The Building Itself","You (Another One)","The Concept of Rent","Every Kevin","The Lease","A Landlord From Before Landlords",
+    "The End of the Hallway","Gary, Ascended","The First Tenant","Nobody (Literally)","The Universe, Briefly","The Last Doreen",
+    "An Idea of a Person","The Narrator","Unit Zero","The Final Wendell","What The Walls Remember","The Rent Itself",
+    "Mildred, Eternal","Applicant #∞"],
+};
+const NAME_FRESH_WEIGHT = 3;   // names from the newest unlocked tier are this many times likelier
+function pickName() {
+  const top = Math.min(S.tier, Math.max(...Object.keys(NAMES).map(Number)));
+  const weight = k => (k === top ? NAME_FRESH_WEIGHT : 1);
+  let roll = 0;
+  for (let k = 1; k <= top; k++) roll += NAMES[k].length * weight(k);
+  roll *= Math.random();
+  for (let k = 1; k <= top; k++) for (const n of NAMES[k]) if ((roll -= weight(k)) < 0) return n;
+  return pick(NAMES[1]);
+}
+const CURRENCIES = {1:["Coins"],2:["Coins","Coins","Pennies","BottleCaps"],3:["Coins","BottleCaps","Teeth"],4:["Teeth","Vibes","Coins","BottleCaps"]};
+/* Random events: no choice involved, they just happen. w = weight (higher = more common), t = first tier it can appear.
+   art = pixel-art left in units: all (every occupied unit), one (a random unit), lucky (the tenant whose mood changed), hit (the unit that lost its tenant).
+   Shop items use the same effect keys, so both go through applyEffects(). */
+const EVENT_SECONDS = tier => Math.max(15, 45 - (tier - 1) * 8);
+const EVENTS = [
+ {t:1,w:3,sev:"good",title:"Free Pizza Day",desc:"A delivery driver gives up and leaves forty pizzas in the lobby.",fx:{art:{all:"pizza"},allMood:8}},
+ {t:1,w:3,sev:"good",title:"Tax Refund",desc:"The government admits it owed you money. Nobody can explain why.",fx:{art:{one:"cash"},coins:120}},
+ {t:1,w:3,sev:"good",title:"Quiet Sunday",desc:"Nothing happens for almost an hour. You sit down.",fx:{sanity:10}},
+ {t:1,w:3,sev:"bad",title:"Burst Pipe",desc:"The second floor is briefly a water feature.",fx:{art:{all:"puddle"},coins:-80,allMood:-5}},
+ {t:1,w:3,sev:"bad",title:"Noise Ordinance Fine",desc:"The city fines the building for being a building, loudly.",fx:{art:{one:"paper"},coins:-60}},
+ {t:1,w:2,sev:"bad",title:"Squirrel Invasion",desc:"They are in the walls and they have opinions.",fx:{art:{all:"squirrel"},allMood:-8}},
+ {t:1,w:2,sev:"good",title:"New Wing Opens",desc:"A door appears at the end of the hall. There is a unit behind it.",fx:{addUnit:true}},
+ {t:2,w:2,sev:"good",title:"Efficient Management Day",desc:"Everyone pays rent early out of sheer confusion.",fx:{rentNow:true}},
+ {t:2,w:2,sev:"bad",title:"The Basement Makes A Noise",desc:"Just the one noise. You think about it for the rest of the day.",fx:{art:{one:"eye"},sanity:-10}},
+ {t:2,w:1,sev:"chaotic",title:"Mystery Envelope",desc:"Unmarked, heavy, slightly warm. You open it anyway.",fx:{art:{one:"paper"},coins:300,sanity:-8}},
+ {t:3,w:2,sev:"bad",title:"Raccoon General Strike",desc:"Local 404 walks out. The bins are a picket line.",fx:{art:{all:"raccoon"},allMood:-12}},
+ {t:3,w:2,sev:"good",title:"Tenant Wins The Lottery",desc:"One of your tenants is suddenly in a very good mood.",fx:{art:{lucky:"cash"},oneMood:30}},
+ {t:3,w:1,sev:"chaotic",title:"Unit Detonation",desc:"One of the units is no longer structurally a unit.",fx:{art:{hit:"scorch"},evictRandom:true}},
+ {t:4,w:2,sev:"bad",title:"Alien Rent Heist",desc:"A beam of light takes a large share of the till. It leaves a receipt.",fx:{art:{one:"alien"},coins:-250}},
+ {t:4,w:2,sev:"bad",title:"The Building Files A Complaint About You",desc:"It is eleven pages long and mostly accurate.",fx:{art:{all:"paper"},sanity:-18}},
+ {t:4,w:1,sev:"chaotic",title:"Portal Malfunction",desc:"A tenant falls out of the building. A new unit falls in.",fx:{art:{hit:"portal"},evictRandom:true,addUnit:true}},
+ {t:4,w:1,sev:"good",title:"ATM Glitch",desc:"The lobby cash machine will not stop.",fx:{art:{all:"cash"},coins:10000}},
+ // ---- Events with choices: the game pauses and you decide ----
+ {t:2,w:3,sev:"chaotic",title:"The Fire Inspector",desc:"An inspector is frowning at the wiring with real commitment.",choices:[
+   {l:"Rewire the building",fx:{coins:-120,clearHazards:"fire",sanity:4}},{l:"Slip him a bribe",fx:{coins:-50}},{l:"Argue about it",fx:{sanity:6,chaos:2},risk:"fire"}]},
+ {t:3,w:3,sev:"chaotic",title:"The Friendly Arsonist",desc:"A man in the lobby offers to warm the whole building up, free of charge.",choices:[
+   {l:"Let him get started",fx:{allMood:8},crisis:"fire"},{l:"Show him out",fx:{sanity:-4}},{l:"Hire him to run the boiler",fx:{coins:-100,boiler:50}}]},
+ {t:3,w:3,sev:"chaotic",title:"A Ouija Board in the Lobby",desc:"It is spelling out your name, slowly, with feeling.",choices:[
+   {l:"Ask it a question",fx:{sanity:-6},gamble:{p:0.5,win:{fx:{coins:300},text:"It gave you a winning lottery number."},lose:{crisis:"ghost",text:"Something answered back, and then moved in."}}},
+   {l:"Burn it",fx:{sanity:6},risk:"fire"},{l:"Sell it online",fx:{coins:150},risk:"ghost"}]},
+ {t:4,w:2,sev:"chaotic",title:"Candle Delivery",desc:"Four hundred scented candles were delivered by mistake. The tenants love them.",choices:[
+   {l:"Hand them out",fx:{allMood:10},risk:"fire"},{l:"Send them back",fx:{allMood:-5}},{l:"Sell them",fx:{coins:200,allMood:-3}}]},
+ {t:4,w:3,sev:"chaotic",title:"A Polite Beam of Light",desc:"A beam of light asks whether it and some friends could visit.",choices:[
+   {l:"Invite them in",fx:{coins:300},crisis:"aliens"},{l:"Charge admission",fx:{coins:700,allMood:-6},crisis:"aliens"},{l:"Close the curtains",fx:{sanity:-8}}]},
+ {t:5,w:3,sev:"chaotic",title:"The Rat King's Envoy",desc:"A rat in a tiny crown requests asylum for a few of his people.",choices:[
+   {l:"Grant asylum",fx:{caps:80,allMood:-4},crisis:"rats"},{l:"Negotiate a treaty",fx:{caps:40,chaos:3}},{l:"Call an exterminator",fx:{coins:-150,chaos:-3}}]},
+ {t:5,w:2,sev:"chaotic",title:"An Investment Opportunity",desc:"A man in a suit made of smaller suits has a once-in-a-lifetime offer.",choices:[
+   {l:"Invest 300 Coins",fx:{coins:-300},gamble:{p:0.45,win:{fx:{coins:1100},text:"It more than tripled. Somehow."},lose:{fx:{sanity:-10},text:"He was three raccoons in a trench coat."}}},
+   {l:"Decline politely",fx:{}}]},
+ {t:6,w:3,sev:"chaotic",title:"A Seance Gone Wrong",desc:"Something came through during the book club's seance, and it likes it here.",choices:[
+   {l:"Let it settle in",fx:{sanity:-6,chaos:4},crisis:"ghost"},{l:"Hire an exorcist",fx:{coins:-250,sanity:8,chaos:-3}},
+   {l:"Trap it in a jar",fx:{},gamble:{p:0.55,win:{fx:{sanity:12,coins:200},text:"It's a very nice jar now."},lose:{crisis:"ghost",text:"The jar was not big enough."}}}]},
+ {t:6,w:2,sev:"chaotic",title:"Mothership Garage Sale",desc:"The aliens are clearing out the mothership. Everything must go.",choices:[
+   {l:"Buy the anti-chaos ray",fx:{coins:-300,chaos:-10}},{l:"Buy everything",fx:{coins:-150,allMood:10},risk:"aliens"},{l:"Avoid eye contact",fx:{sanity:-5}}]},
+ {t:7,w:3,sev:"chaotic",title:"The Building Offers a Deal",desc:"The building whispers: two more units, for a little of your mind.",choices:[
+   {l:"Accept",fx:{addUnit:2,sanity:-20,chaos:3}},{l:"Refuse",fx:{sanity:6}},
+   {l:"Haggle",fx:{},gamble:{p:0.5,win:{fx:{addUnit:1,sanity:-5},text:"It respected the effort."},lose:{fx:{sanity:-25},text:"It did not respect the effort."}}}]},
+ {t:8,w:3,sev:"chaotic",title:"The Basement Crack",desc:"A glowing crack in the basement offers to pay rent. In fire.",choices:[
+   {l:"Sign the lease",fx:{coins:1200,chaos:6},crisis:"fire"},{l:"Pour concrete in it",fx:{coins:-300,sanity:10,chaos:-4}},{l:"Ignore it",fx:{},risk:"fire"}]},
+ {t:9,w:3,sev:"chaotic",title:"The Coalition",desc:"The aliens, the ghosts and the rats have formed a coalition and want a meeting.",choices:[
+   {l:"Pay them all off",fx:{coins:-900,chaos:-8}},{l:"Let them fight it out",fx:{},crisis:["aliens","rats"]},{l:"Join the coalition",fx:{sanity:-30,allMood:15,chaos:5}}]},
+];
+const SHOP_COOLDOWN = 30, SHOP_TIER_MARKUP = 0.25;   // prices rise 25% per tier; Vibes buy nothing, on purpose
+const SHOP = [
+ {name:"Therapy Session",desc:"Fifty minutes of someone else listening.",cost:150,cur:"Coins",fx:{sanity:20}},
+ {name:"Pizza Party",desc:"Bribery, but with toppings.",cost:100,cur:"Coins",fx:{art:{all:"pizza"},allMood:10}},
+ {name:"Building Permit",desc:"Adds a unit without waiting for the next tier.",cost:500,cur:"Coins",fx:{addUnit:true}},
+ {name:"Rush Real Estate Agent",desc:"Applicants for every empty unit, right now.",cost:80,cur:"Pennies",fx:{fillVacancies:true}},
+ {name:"Anger Management Voucher",desc:"For whoever needs it most.",cost:40,cur:"BottleCaps",fx:{worstMood:25}},
+ {name:"PR Campaign",desc:"Billboards, a jingle and a very sincere apology video.",cost:250,cur:"Coins",fx:{rep:25}},
+ {name:"Tooth Fairy Advance",desc:"Rent comes in immediately. Don't ask how.",cost:30,cur:"Teeth",fx:{rentNow:true}},
+];
+const shopPrice = item => Math.floor(item.cost * (1 + SHOP_TIER_MARKUP * (S.tier - 1)));
+
+const PERSONALITIES = [
+ {id:"Reliable",mood:75,mult:1.0, blurb:"Pays on time. Owns a label maker."},
+ {id:"Grumpy",  mood:55,mult:1.3, blurb:"Pays more. Already drafting a complaint."},
+ {id:"Chill",   mood:88,mult:0.8, blurb:"Hard to upset. Hard to bill."},
+ {id:"Chaotic", mood:70,mult:1.15,blurb:"Good money, questionable source."},
+];
+
+/* ============ State (one plain object, like Building:toDisplayData) ============ */
+let S;
+const rand = (a, b) => a + Math.random() * (b - a);
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const contentTier = () => Math.min(S.tier, 4);
+
+function newTenant(name, rent, currency, mood, starting) {
+  return {name, rent, currency, mood, starting: !!starting, rentDue: true, issue: null, issueAge: 0};
+}
+function newGame() {
+  S = {tier:1, sanity:100, till:{}, running:false, over:null,
+       tTier:0, tIssue:0, tRent:0, tCheck:0, tEvent:0, tMini:0, tQuick:0, order:100, boiler:100, rep:100, chaos:0, owed:{}, broke:0, tTenEv:0, staff:[], hires:0, tStaffEv:0, crises:{}, spawn:{}, extCd:0, tFire:0, damages:0, shopCooldown:0, notes:[], noteId:0, log:[],
+       units:[
+        {tenant:newTenant("Gary",100,"Coins",75,true)},
+        {tenant:newTenant("Mildred",120,"Coins",75,true)},
+        {tenant:newTenant("Chad",90,"Coins",75,true)},
+        {tenant:null, candidates:null, wait:0},
+       ]};
+  S.units[3].candidates = makeApplicants();
+  say("Three tenants, one empty unit. Press Start when you're ready.");
+}
+
+function usedNames() {
+  const used = new Set();
+  for (const u of S.units) {
+    if (u.tenant) used.add(u.tenant.name);
+    (u.candidates || []).forEach(c => used.add(c.name));
+  }
+  return used;
+}
+// Everyone pays in Coins until tier 6; after that other currencies creep in, but Coins stay the majority (60% at worst).
+function pickCurrency() {
+  const coinChance = Math.max(0.6, 1 - Math.max(0, S.tier - 5) * 0.06);
+  if (Math.random() < coinChance) return "Coins";
+  return pick(S.tier >= 10 ? ["BottleCaps","BottleCaps","Pennies","Teeth","Vibes"] : ["Pennies","BottleCaps","Teeth","Vibes"]);
+}
+function makeApplicants() {
+  const tier = contentTier(), used = usedNames(), out = [];
+  const people = [...PERSONALITIES].sort(() => Math.random() - 0.5).slice(0, 3);
+  for (const p of people) {
+    let name = pickName(), tries = 0;
+    while (used.has(name) && tries++ < 40) name = pickName();
+    if (used.has(name)) name += " II";
+    used.add(name);
+    out.push({name, personality:p.id, blurb:p.blurb, mood:p.mood,
+              rent: Math.round((rand(80, 110) + (S.tier - 1) * 15) * p.mult),
+              currency: pickCurrency()});
+  }
+  return out;
+}
+function say(text) { S.log.unshift(text); S.log.length = Math.min(S.log.length, 5); }
+function adjustSanity(d) { S.sanity = clamp(S.sanity + d, 0, 100); }
+
+/* ============ Sound: synthesized with Web Audio, so there are no asset files ============ */
+let soundOn = true, audio = null, noiseBuf = null;
+try { soundOn = localStorage.getItem("ln-sound2") !== "0"; } catch (e) {}   // on by default (new key, so old "off" settings reset)
+// A burst of filtered white noise: crackles, whooshes, rain and thunder.
+function hiss(at, dur, vol, filter = "bandpass", freq = 1000, q = 1, dest) {   // named hiss: noise() is the label-scrambling helper
+  dest = dest || audio.destination;
+  if (!noiseBuf) { noiseBuf = audio.createBuffer(1, audio.sampleRate, audio.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+  const src = audio.createBufferSource(), f = audio.createBiquadFilter(), g = audio.createGain(), t0 = audio.currentTime + at;
+  src.buffer = noiseBuf; src.loop = true; f.type = filter; f.frequency.value = freq; f.Q.value = q;
+  g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  src.connect(f).connect(g).connect(dest); src.start(t0); src.stop(t0 + dur + 0.05);
+}
+function beep(freq, at, dur, type = "square", vol = 0.08, slideTo) {
+  const o = audio.createOscillator(), g = audio.createGain(), t0 = audio.currentTime + at;
+  o.type = type; o.frequency.setValueAtTime(freq, t0);
+  if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
+  g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o.connect(g).connect(audio.destination); o.start(t0); o.stop(t0 + dur + 0.02);
+}
+function sfx(name, n = 1) {
+  if (!soundOn) return;
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();   // browsers only allow this after a click
+    if (audio.state === "suspended") audio.resume();
+    const warp = 1 + Math.max(0, S.tier - 3) * (Math.random() - 0.5) * 0.25;      // pitches drift once things get unhinged
+    if (name === "click") beep(520 * warp, 0, 0.05, "square", 0.04);
+    if (name === "coin")  { beep(988 * warp, 0, 0.08); beep(1319 * warp, 0.08, 0.25); }
+    if (name === "issue") { beep(660 * warp, 0, 0.09, "triangle", 0.12); beep(660 * warp, 0.13, 0.12, "triangle", 0.12); }
+    if (name === "good")  { beep(523, 0, 0.1, "triangle", 0.1); beep(659, 0.1, 0.1, "triangle", 0.1); beep(784, 0.2, 0.2, "triangle", 0.1); }
+    if (name === "bad")   beep(300, 0, 0.4, "sawtooth", 0.07, 90);
+    if (name === "tier")  { beep(220 * warp, 0, 0.5, "sawtooth", 0.07, 880); beep(110, 0.1, 0.6, "square", 0.05, 55); }
+    if (name === "over")  [392, 330, 262, 196].forEach((f, i) => beep(f, i * 0.22, 0.3, "triangle", 0.12));
+    if (name === "fire")  { hiss(0, 1.1, 0.5, "bandpass", 1200, 0.5); hiss(0, 0.6, 0.35, "lowpass", 300); for (let k = 0; k < 10; k++) hiss(Math.random() * 1, 0.03, 0.6, "highpass", 2500); }
+    if (name === "crackle") { hiss(0, 0.45, 0.12 + 0.05 * Math.min(n, 5), "bandpass", 1500, 0.6); for (let k = 0; k < 2 + Math.min(n, 5); k++) hiss(Math.random() * 0.4, 0.025, 0.45, "highpass", 2500); }
+    if (name === "drums") { const beat = n % 4; beep(150, 0, 0.12, "sine", 0.18, 45); if (beat % 2) hiss(0, 0.12, 0.35, "bandpass", 1800, 0.8); hiss(0.12, 0.03, 0.15, "highpass", 7000); beep([82, 82, 98, 73][beat], 0, 0.22, "square", 0.04); }
+    if (name === "spread") hiss(0, 0.35, 0.1, "bandpass", 900, 0.8);
+    if (name === "extinguish") { hiss(0, 0.55, 0.16, "highpass", 2500); hiss(0.05, 0.4, 0.06, "lowpass", 600); }
+    if (name === "ghost") { beep(440, 0, 1.2, "sine", 0.06, 220); beep(466, 0.05, 1.2, "sine", 0.05, 233); }
+    if (name === "aliens") for (let k = 0; k < 8; k++) beep(k % 2 ? 940 : 700, k * 0.09, 0.09, "sine", 0.06);
+    if (name === "rats")  for (let k = 0; k < 3; k++) beep(2400 + Math.random() * 600, k * 0.13, 0.06, "square", 0.03, 3200);
+    if (name === "party") { [523, 659, 784, 1047].forEach((f, k) => beep(f, k * 0.08, 0.12, "square", 0.05)); hiss(0, 0.05, 0.08, "highpass", 6000); hiss(0.16, 0.05, 0.08, "highpass", 6000); }
+    if (name === "beat")  { beep(120, 0, 0.12, "sine", 0.06, 50); hiss(0.25, 0.04, 0.03, "highpass", 7000); }
+    if (name === "band")  { for (let k = 0; k < 3; k++) beep(130, k * 0.15, 0.13, "sine", 0.1, 45); hiss(0.3, 0.12, 0.1, "bandpass", 1800); }
+    if (name === "build") { hiss(0, 0.05, 0.15, "bandpass", 2500, 3); beep(300, 0, 0.08, "square", 0.05); hiss(0.18, 0.05, 0.15, "bandpass", 2500, 3); }
+    if (name === "chant") { beep(147, 0, 0.9, "triangle", 0.08); beep(220, 0, 0.9, "triangle", 0.05); }
+    if (name === "siren") for (let k = 0; k < 4; k++) beep(k % 2 ? 900 : 600, k * 0.22, 0.22, "sawtooth", 0.05);
+    if (name === "death") { beep(110, 0, 1.6, "sine", 0.14); beep(165, 0, 1.4, "sine", 0.06); beep(220, 0.02, 1.2, "sine", 0.05); }
+    if (name === "thud")  beep(90, 0, 0.25, "sine", 0.15, 40);
+    if (name === "ring")  for (let k = 0; k < 8; k++) beep(k % 2 ? 1500 : 1300, k * 0.05, 0.05, "square", 0.03);
+    if (name === "blip")  beep(880, 0, 0.06, "sine", 0.06);
+    if (name === "zap")   beep(1500, 0, 0.3, "sawtooth", 0.05, 100);
+    if (name === "thunder") hiss(0, 1.4, 0.2, "lowpass", 300);
+    if (name === "sizzle") hiss(0, 0.7, 0.05, "highpass", 4000);
+    if (name === "cash")  { beep(1568, 0, 0.06, "square", 0.04); beep(2093, 0.06, 0.12, "square", 0.04); hiss(0, 0.08, 0.05, "highpass", 5000); }
+    if (name === "skate") hiss(0, 0.6, 0.06, "bandpass", 400, 2);
+  } catch (e) {}   // no audio support: the game just plays silently
+}
+
+/* ============ Music: generated as it plays, and it gets stranger every tier ============ */
+let musicOn = true, musicBus = null, nextNote = 0, step = 0;
+try { musicOn = localStorage.getItem("ln-music") !== "0"; } catch (e) {}
+const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+const PROG_MAJOR = [[48,52,55,59],[45,48,52,55],[41,45,48,52],[43,47,50,53]];   // Cmaj7, Am7, Fmaj7, G7: cosy
+const PROG_MINOR = [[48,51,55,58],[44,48,51,55],[41,44,48,51],[43,46,50,53]];   // the same shape, gone sour
+function note(freq, t, dur, type, vol, detune = 0) {
+  const o = audio.createOscillator(), g = audio.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, t); o.detune.setValueAtTime(detune, t);
+  g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vol, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(musicBus); o.start(t); o.stop(t + dur + 0.05);
+}
+function musicTick() {
+  const playing = musicOn && soundOn && audio && S.running && !S.over;
+  if (!playing) { nextNote = 0; return; }
+  if (!musicBus) {
+    musicBus = audio.createGain(); musicBus.gain.value = 1.8;
+    const lp = audio.createBiquadFilter(); lp.type = "lowpass"; musicBus.lp = lp;
+    musicBus.connect(lp).connect(audio.destination);
+  }
+  const tier = S.tier, bpm = Math.min(200, 74 + (tier - 1) * 7), stepLen = 60 / bpm / 4;
+  musicBus.lp.frequency.value = Math.min(9000, 1800 + tier * 450);
+  if (nextNote < audio.currentTime) nextNote = audio.currentTime + 0.05;
+  while (nextNote < audio.currentTime + 0.25) {
+    const t = nextNote, s16 = step % 16, prog = tier >= 4 ? PROG_MINOR : PROG_MAJOR, chord = prog[Math.floor(step / 16) % 4];
+    const wobble = tier >= 3 ? Math.sin(t * 0.7) * (tier - 2) * 8 : 0;   // the tape starts to warp
+    const chaos = Math.max(0, tier - 8);
+    const det = () => wobble + (chaos ? (Math.random() - 0.5) * chaos * 40 : 0);
+    // Pads: one chord per bar
+    if (s16 === 0) chord.forEach(m => note(mtof(m), t, stepLen * 16, tier >= 5 ? "sawtooth" : "triangle", tier >= 5 ? 0.012 : 0.02, det()));
+    // Bass
+    if (s16 % 8 === 0 || (tier >= 6 && s16 % 4 === 2)) note(mtof(chord[0] - 12), t, stepLen * 3, "square", 0.025, det());
+    // Arpeggio: eighths from tier 2, sixteenths from tier 5, jumping octaves later on
+    if (tier >= 2 && (tier >= 5 || s16 % 2 === 0)) {
+      let m = chord[step % chord.length] + 12;
+      if (tier >= 6 && Math.random() < 0.3) m += pick([12, 24, -12]);
+      if (tier >= 7 && Math.random() < (tier - 6) * 0.1) m += pick([1, 6, -1]);   // wrong notes creep in
+      note(mtof(m), t, stepLen * 1.8, tier >= 8 ? "square" : "sine", 0.018, det());
+    }
+    // Drums
+    if (tier >= 2 && (s16 === 0 || s16 === 8 || (tier >= 6 && Math.random() < 0.15))) { const o = audio.createOscillator(), g = audio.createGain(); o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(45, t + 0.15); g.gain.setValueAtTime(0.12, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18); o.connect(g).connect(musicBus); o.start(t); o.stop(t + 0.2); }
+    if (tier >= 3 && (tier >= 6 || s16 % 2 === 0)) hiss(t - audio.currentTime, 0.03, 0.04, "highpass", 7000, 1, musicBus);
+    if (tier >= 4 && (s16 === 4 || s16 === 12)) hiss(t - audio.currentTime, 0.12, 0.08, "bandpass", 1800, 0.8, musicBus);
+    if (tier >= 8 && Math.random() < chaos * 0.02 + 0.02) hiss(t - audio.currentTime, 0.08, 0.12, "bandpass", 200 + Math.random() * 4000, 4, musicBus);   // glitches
+    // From tier 7 the beat stutters: some steps repeat instead of moving on
+    step += tier >= 7 && Math.random() < (tier - 6) * 0.04 ? 0 : 1;
+    nextNote += stepLen * (tier >= 9 && Math.random() < 0.1 ? 0.5 : 1);
+  }
+}
+
+/* ============ Rules ============ */
+// Reputation: tenants leaving and unhappy tenants drag it down; happy ones slowly build it back.
+const REP = {moveOut:6, death:25, resolve:2, goodMood:60, badMood:45, issueAllowance:2, perIssue:0.2};
+const openIssueCount = () => S.units.reduce((n, u) => n + (u.tenant && u.tenant.issue ? 1 + (u.tenant.stack || 0) : 0), 0);
+function tickRep(dt) {
+  const housed = S.units.filter(u => u.tenant), avg = averageMood();
+  let d = avg >= REP.goodMood ? 0.6 : avg >= REP.badMood ? 0 : -(REP.badMood - avg) * 0.05;
+  d -= 0.1 * housed.filter(u => u.tenant.mood < 25).length;   // every miserable tenant is telling someone
+  d -= REP.perIssue * Math.max(0, openIssueCount() - REP.issueAllowance);   // a backlog of complaints gets noticed
+  d -= 0.3 * S.units.filter(u => u.body > 0).length;
+  S.rep = clamp(S.rep + d * dt, 0, 100);
+}
+// Low reputation stretches the wait for applicants: normal at 70+, about 10x at 0.
+const repSlowdown = () => 1 + Math.pow((70 - Math.min(70, S.rep)) / 70, 2) * 9;
+const repWait = base => base * repSlowdown();
+function vacate(unit, why, repHit = REP.moveOut) {
+  sfx("bad");
+  S.rep = Math.max(0, S.rep - repHit);
+  say(`${unit.tenant.name} ${why}.`);
+  const moods = S.units.filter(u => u.tenant).map(u => u.tenant.mood);
+  const avg = moods.reduce((a, b) => a + b, 0) / moods.length;
+  unit.tenant = null; unit.candidates = null;
+  // Happier buildings fill faster; the wait also blocks the evict-and-refill loop.
+  const centre = APPLICANT_WAIT[1] - (avg / 100) * (APPLICANT_WAIT[1] - APPLICANT_WAIT[0]);
+  unit.wait = repWait(clamp(centre + rand(-3, 3), APPLICANT_WAIT[0], APPLICANT_WAIT[1]));
+}
+function payRent(t) { S.till[t.currency] = (S.till[t.currency] || 0) + t.rent; }
+// cycle = the regular rent day, when a tenant might skip or pay late. Early collections (events, shop) always pay.
+function collectRent(cycle) {
+  let got = 0; const missed = [];
+  for (const u of S.units) {
+    const t = u.tenant;
+    if (!t) continue;
+    if (cycle) {
+      t.behind = null; t.lateIn = 0;   // a clean slate each rent day
+      const dodge = clamp(DODGE_BASE + Math.max(0, 60 - t.mood) * 0.006 + (S.tier - 1) * 0.01, 0, 0.5);   // unhappy tenants and later tiers dodge more
+      if (Math.random() < dodge) {
+        if (Math.random() < 0.5) { t.behind = "skipped"; missed.push(`${t.name} skipped rent`); }
+        else { t.behind = "late"; t.lateIn = rand(6, 14); missed.push(`${t.name} is paying late`); }
+        continue;
+      }
+    }
+    payRent(t); got++;
+  }
+  if (got) { say(`Rent came in from ${got} tenant${got > 1 ? "s" : ""}.`); sfx("coin"); }
+  if (missed.length) { say(missed.join(", ") + ". You may evict."); sfx("bad"); }
+}
+function resolveIssue(unitIndex, optIndex) {
+  const u = S.units[unitIndex], t = u.tenant;
+  if (!t || !t.issue) return;
+  if (!t.issue.opts[optIndex]) return;
+  const o = scaleOpt(t.issue.opts[optIndex]);   // late tiers make every choice count for more
+  if (o.cost && (S.till.Coins || 0) < o.cost) return;
+  if (o.cost) S.till.Coins -= o.cost;
+  const title = t.issue.title;
+  t.issue = null; t.issueAge = 0;
+  const sanityShift = o.s !== undefined ? o.s : -(o.m || 0);
+  S.chaos = clamp(S.chaos + (sanityShift < 0 ? 1.5 : sanityShift > 0 ? -1.2 : 0), 0, CHAOS_MAX);   // indulging costs money later; pushing back saves it
+  if (o.risk) plantHazard(u, o.risk);
+  if (sanityShift > 0 && !o.evict && Math.random() < backlashChance()) backlash(u);   // pushing back has consequences too
+  if (o.evict) { adjustSanity(o.s || 0); vacate(u, "is gone"); return; }
+  setMood(t, t.mood + (o.m || 0));
+  adjustSanity(o.s !== undefined ? o.s : -(o.m || 0));
+  if (o.r) t.rent = Math.max(10, t.rent + o.r);
+  if (o.cur) t.currency = o.cur;
+  if (o.rep) S.rep = clamp(S.rep + o.rep, 0, 100);
+  if (o.all) applyEffects({allMood:o.all});
+  if (o.gain) S.till.Coins = (S.till.Coins || 0) + o.gain;
+  S.rep = Math.min(100, S.rep + REP.resolve);
+  if (o.p) addProp(u, o.p);   // the room keeps a souvenir of what you decided
+  say(`${title}: ${actingStaff ? `${actingStaff} chose` : "you chose"} "${o.l}"${actingStaff ? ` in unit ${unitIndex + 1}` : ""}.`);
+  if (t.stack > 0) { t.stack--; giveIssue(t); }   // the next issue in the pile
+  checkMoveOut(u, true);
+}
+function evict(unitIndex) {
+  const u = S.units[unitIndex];
+  if (!u.tenant || !u.tenant.behind) return;   // only tenants who skipped or delayed rent this cycle
+  adjustSanity(EVICT_SANITY);
+  vacate(u, "was evicted");
+}
+function moveIn(unitIndex, candIndex) {
+  const u = S.units[unitIndex], c = u.candidates && u.candidates[candIndex];
+  if (u.tenant || !c) return;
+  u.tenant = newTenant(c.name, c.rent, c.currency, c.mood, false);
+  u.candidates = null;
+  say(`${c.name} moved in.`); sfx("good");
+}
+// One executor for events and shop purchases. Returns what actually happened, so a no-op comes back empty.
+function applyEffects(fx) {
+  const out = [], signed = n => (n > 0 ? "+" : "") + n, housed = () => S.units.filter(u => u.tenant);
+  if (fx.coins) {
+    const before = S.till.Coins || 0; S.till.Coins = Math.max(0, before + fx.coins);   // can't lose rent you never collected
+    if (S.till.Coins !== before) out.push(`${signed(S.till.Coins - before)} Coins`);
+  }
+  if (fx.sanity) { adjustSanity(fx.sanity); out.push(`sanity ${signed(fx.sanity)}`); }
+  if (fx.allMood && housed().length) {
+    housed().forEach(u => setMood(u.tenant, u.tenant.mood + fx.allMood));
+    out.push(`everyone's mood ${signed(fx.allMood)}`);
+  }
+  const one = fx.oneMood ? pick(housed()) : fx.worstMood ? housed().sort((a, b) => a.tenant.mood - b.tenant.mood)[0] : null;
+  const art = fx.art || {};
+  if (art.all) housed().forEach(u => addProp(u, art.all));
+  if (art.one) addProp(pick(S.units), art.one);
+  if (one && art.lucky) addProp(one, art.lucky);
+  if (one) { const d = fx.oneMood || fx.worstMood; setMood(one.tenant, one.tenant.mood + d); out.push(`${one.tenant.name}'s mood ${signed(d)}`); }
+  if (fx.rentNow && housed().length) { collectRent(); out.push("rent collected early"); }
+  if (fx.evictRandom && housed().length > 1) {   // never takes your last tenant
+    const u = pick(housed()), name = u.tenant.name; vacate(u, "is gone"); if (art.hit) addProp(u, art.hit); out.push(`${name} is gone`);
+  }
+  if (fx.addUnit) for (let n = fx.addUnit === true ? 1 : fx.addUnit; n > 0; n--) { S.units.push({tenant:null, candidates:null, wait:repWait(rand(3, 6))}); out.push(`unit ${S.units.length} opens`); }
+  if (fx.caps) { S.till.BottleCaps = Math.max(0, (S.till.BottleCaps || 0) + fx.caps); out.push(`${signed(fx.caps)} BottleCaps`); }
+  if (fx.boiler) { S.boiler = Math.min(100, S.boiler + fx.boiler); out.push(`boiler +${fx.boiler}`); }
+  if (fx.chaos) { S.chaos = clamp(S.chaos + fx.chaos, 0, CHAOS_MAX); out.push(fx.chaos > 0 ? "expenses up" : "expenses down"); }
+  if (fx.rep) { S.rep = clamp(S.rep + fx.rep, 0, 100); out.push(`reputation ${signed(fx.rep)}`); }
+  if (fx.clearHazards) { S.units.forEach(u => u.hazards = (u.hazards || []).filter(h => h.kind !== fx.clearHazards)); out.push("fire risks removed"); }
+  if (fx.fillVacancies) {
+    const waiting = S.units.filter(u => !u.tenant && !u.candidates && !(u.ruin > 0) && !(u.body > 0));
+    waiting.forEach(u => u.candidates = makeApplicants());
+    if (waiting.length) out.push(`applicants for ${waiting.length} unit${waiting.length > 1 ? "s" : ""}`);
+  }
+  return out;
+}
+function randomEvent() {
+  const pool = EVENTS.filter(e => e.t <= S.tier);
+  let roll = Math.random() * pool.reduce((sum, e) => sum + e.w, 0);
+  const ev = pool.find(e => (roll -= e.w) < 0) || pool[0];
+  if (ev.choices) { openDialog("event", ev); sfx("issue"); return; }
+  const out = applyEffects(ev.fx);
+  if (ev.sev !== "good") S.chaos = clamp(S.chaos + (ev.sev === "chaotic" ? 2 : 1), 0, CHAOS_MAX);
+  const outcome = out.join(", ") || "nothing came of it";
+  notify({title:ev.title, desc:ev.desc, outcome, sev:ev.sev, ttl:7});
+  say(`${ev.title}: ${outcome}.`);
+  sfx(ev.sev === "good" ? "good" : ev.sev === "bad" ? "bad" : "tier");
+}
+function buy(index) {
+  const item = SHOP[index], price = item && shopPrice(item);
+  if (!item || S.shopCooldown > 0 || (S.till[item.cur] || 0) < price) return;
+  const out = applyEffects(item.fx);
+  if (!out.length) { say(`${item.name} would do nothing right now. No charge.`); return; }
+  S.till[item.cur] -= price; S.shopCooldown = SHOP_COOLDOWN;
+  say(`Bought ${item.name}: ${out.join(", ")}.`); sfx("coin");
+}
+/* Later tiers add meters you have to keep filled. Each unlocks at its own tier. */
+const BARS = {
+  order:  {tier:4, name:"Order",      how:"Keep average mood at 45 or above, or the tenants riot and the run ends."},
+  boiler: {tier:6, name:"Boiler",     how:"It cools on its own. Press Stoke to keep it going, or everyone's mood drops."},
+  rep:    {tier:1, name:"Reputation", how:"Falls when tenants leave or are unhappy. Low reputation means slow applicants. At 0 you're arrested."},
+  expenses:{tier:7, name:"Expenses",  how:"Tenants, crazy choices and crises now cost Coins every second. Sane choices bring it down. Stay at 0 Coins for 5 seconds and you're bankrupt."},
+  caps:   {tier:10, name:"Bottle caps", how:"The building burns through bottle caps. Keep some in stock or the rats move in. You've been given a crate to start."},
+};
+const ORDER_MOOD = 45;
+function averageMood() {
+  const moods = S.units.filter(u => u.tenant).map(u => u.tenant.mood);
+  return moods.length ? moods.reduce((a, b) => a + b, 0) / moods.length : 50;
+}
+function tickBars(dt) {
+  if (S.tier >= BARS.order.tier) {
+    const avg = averageMood();
+    S.order = clamp(S.order + (avg >= ORDER_MOOD ? 4 : -(2 + (ORDER_MOOD - avg) * 0.2)) * dt, 0, 100);
+    if (S.order <= 0) return endGame("riot");
+  }
+  if (S.tier >= BARS.boiler.tier) {
+    S.boiler -= (2.5 + (S.tier - BARS.boiler.tier) * 0.3) * dt;
+    if (S.boiler <= 0) { S.boiler = 60; barFailed("The boiler went out", applyEffects({allMood:-15, art:{all:"puddle"}})); }
+  }
+  if (S.tier >= BARS.expenses.tier) {
+    spend("Coins", expenseRate() * dt);
+    S.broke = (S.till.Coins || 0) <= 0 ? S.broke + dt : 0;
+    if (S.broke >= BROKE_GRACE) return endGame("bankrupt");
+  }
+  if (S.tier >= BARS.caps.tier) {
+    spend("BottleCaps", capsUse() * dt);
+    if (!(S.till.BottleCaps > 0) && !(S.crises.rats > 0)) startCrisis("rats");
+  }
+  tickRep(dt);
+  if (S.rep <= 0) return endGame("arrested");
+}
+function barFailed(title, out) {
+  const outcome = out.join(", ") || "no harm done, this time";
+  notify({title, desc:"You let a meter run out.", outcome, sev:"bad", ttl:6});
+  say(`${title}: ${outcome}.`); sfx("bad");
+}
+function stoke() { if (S.running && !S.over && S.tier >= BARS.boiler.tier) S.boiler = Math.min(100, S.boiler + 30); }
+
+/* Quick tasks: tiny timed prompts in the dock. The game keeps running and nothing is covered. */
+const QUICK_FROM_TIER = 5;
+const quickEvery = tier => Math.max(12, 40 - (tier - QUICK_FROM_TIER) * 4);
+const QUICKS = {
+  phone:  {text:"The phone is ringing",      button:"Answer"},
+  dont:   {text:"Do not press this button",  button:"Press"},
+  key:    {text:"Press the key",             button:""},
+  double: {text:"Someone's at the door. Knock back twice", button:"Knock"},
+};
+let quick = null;
+function tickQuick(dt) {
+  if (quick) { quick.time += dt; if (quick.time >= quick.limit) endQuick(quick.type === "dont"); return; }   // not pressing is how you win "dont"
+  if (S.tier >= QUICK_FROM_TIER && (S.tQuick += dt) >= quickEvery(S.tier)) {
+    S.tQuick = 0;
+    quick = {type: pick(Object.keys(QUICKS)), time:0, got:0, key: pick([..."ASDFGHJKL"]), limit: Math.max(2.5, 4.5 - (S.tier - QUICK_FROM_TIER) * 0.2)};
+    sfx(quick.type === "phone" ? "ring" : quick.type === "double" ? "thud" : "issue");
+  }
+}
+function pressQuick() {
+  if (!quick || !S.running || dialog) return;
+  if (quick.type === "dont") endQuick(false);
+  else if (quick.type === "double" && ++quick.got < 2) return;
+  else endQuick(true);
+}
+function endQuick(won) {
+  const text = QUICKS[quick.type].text; quick = null;
+  adjustSanity(won ? 3 : -4);
+  say(`${text}: ${won ? "handled, sanity +3" : "fumbled, sanity -4"}.`); sfx(won ? "good" : "bad");
+}
+
+/* ============ Late-game weight: issue choices hit harder every tier past 4 ============ */
+const COST = tier => 1 + Math.max(0, tier - 4) * 0.25;   // prices: 2x at tier 8, 3x at tier 12
+const IMPACT = tier => clamp(1 + (tier - 4) * 0.15, 1, 3);   // 1x up to tier 4, 1.6x at tier 8, 3x by tier 18
+function scaleOpt(o) {
+  const k = IMPACT(S.tier); if (k === 1) return o;
+  const sc = v => (v === undefined ? undefined : Math.round(v * k));
+  return {...o, m:sc(o.m), s:sc(o.s), r:sc(o.r), all:sc(o.all), gain:sc(o.gain), cost:o.cost && Math.round(o.cost * COST(S.tier))};
+}
+function scaleFx(fx) {
+  const k = IMPACT(S.tier), out = {...fx};
+  for (const key of ["coins","sanity","allMood","caps"]) if (out[key]) out[key] = Math.round(out[key] * (key === "coins" && out[key] < 0 ? COST(S.tier) : k));
+  return out;
+}
+
+/* ============ Consequences: risky choices plant hazards that go off later ============ */
+const HAZARD_CHANCE = 0.65;   // a risky issue choice doesn't always backfire
+const CHAOS_MAX = 80;
+const RISKS = {fire:"fire", ghost:"possession", aliens:"alien invasion", rats:"rat invasion"};
+function plantHazard(u, kind, certain) {
+  if (!u || (!certain && Math.random() >= HAZARD_CHANCE)) return;
+  (u.hazards = u.hazards || []).push({kind, fuse: rand(15, 45)});
+}
+function trigger(kind, u) {
+  if (kind === "fire") ignite(u || pick(S.units.filter(x => !(x.ruin > 0))));
+  else if (kind === "ghost") {
+    const target = u && u.tenant ? u : pick(S.units.filter(x => x.tenant && !x.tenant.possessed));
+    if (target && target.tenant && !target.tenant.possessed) possess(target); else if (u) addProp(u, "ghost");
+  }
+  else startCrisis(kind);
+}
+function tickHazards(dt) {
+  for (const u of S.units) {
+    if (!u.hazards || !u.hazards.length) continue;
+    for (const h of u.hazards) h.fuse -= dt;
+    const due = u.hazards.filter(h => h.fuse <= 0);
+    u.hazards = u.hazards.filter(h => h.fuse > 0);
+    due.forEach(h => trigger(h.kind, u));
+  }
+}
+// Fractional costs build up and come out of the till as whole coins.
+function spend(cur, amount) {
+  S.owed[cur] = (S.owed[cur] || 0) + amount;
+  const whole = Math.floor(S.owed[cur]);
+  if (whole > 0) { S.owed[cur] -= whole; S.till[cur] = Math.max(0, (S.till[cur] || 0) - whole); }
+}
+// Notifications stack up instead of replacing each other. A repeat of the same title refreshes the existing one.
+const NOTES_KEPT = 6;
+function notify(n) {
+  const same = S.notes.find(x => x.title === n.title);
+  if (same) { Object.assign(same, n); return; }
+  S.notes.push({...n, id: ++S.noteId});
+  if (S.notes.length > NOTES_KEPT) S.notes.shift();
+}
+function crisisBanner(title, desc, outcome, sound = "bad") { notify({title, desc, outcome, sev:"bad", ttl:7}); say(`${title}. ${desc}`); sfx(sound); shake(); }
+
+/* Deaths: a heavy hit to reputation and everyone's mood, and the body upsets the neighbours until it's removed. */
+const BODY = {linger:90, near:2.5, nearer:1.2, mood:-8, cost:80};
+const bodyCost = () => Math.round(BODY.cost * COST(S.tier));
+function killTenant(u, cause) {
+  const t = u.tenant; if (!t) return;
+  u.tenant = null; u.candidates = null; u.body = BODY.linger;
+  S.rep = Math.max(0, S.rep - REP.death); S.chaos = clamp(S.chaos + 2, 0, CHAOS_MAX);
+  applyEffects({allMood: BODY.mood});
+  crisisBanner(`${t.name} has died`, `${t.name} died ${cause}. The building is shaken, and the body is still in unit ${S.units.indexOf(u) + 1}.`, `Reputation -${REP.death}, everyone's mood ${BODY.mood}`, "death");
+}
+function tickBodies(dt) {
+  const k = IMPACT(S.tier);
+  S.units.forEach((u, i) => {
+    if (!(u.body > 0)) return;
+    [[i - 1, BODY.near], [i + 1, BODY.near], [i - 2, BODY.nearer], [i + 2, BODY.nearer]].forEach(([j, rate]) => {
+      const n = S.units[j]; if (n && n.tenant) setMood(n.tenant, n.tenant.mood - rate * k * dt);
+    });
+    if ((u.body -= dt) <= 0) { u.body = 0; u.wait = repWait(rand(10, 20)); say(`The coroner finally collected the body from unit ${i + 1}.`); }
+  });
+}
+function removeBody(i) {
+  const u = S.units[i];
+  if (!(u.body > 0)) return;
+  spend("Coins", bodyCost()); u.body = 0; u.wait = repWait(rand(10, 20));
+  say(`You had the body removed from unit ${i + 1}.`); sfx("thud");
+}
+
+/* Fire: grows, spreads to the units next door, and destroys what it finishes. */
+const FIRE = {grow:7, spread:0.12, damage:3, destroyCost:150, rebuild:90, extinguish:45, cooldown:1.5};
+function ignite(u) {
+  if (!u || u.ruin > 0 || u.fire > 0) return;
+  u.fire = 15; S.chaos = clamp(S.chaos + 3, 0, CHAOS_MAX);
+  crisisBanner(`Fire in unit ${S.units.indexOf(u) + 1}`, "It will spread to the units next door. Hit Extinguish on burning units.", "Damages are adding up", "fire");
+}
+function tickFire(dt) {
+  const k = IMPACT(S.tier);
+  S.extCd = Math.max(0, S.extCd - dt);
+  const burning = S.units.filter(u => u.fire > 0).length;
+  if (burning && (S.tCrackle = (S.tCrackle || 0) + dt) >= 0.5) { S.tCrackle = 0; sfx("crackle", burning); }   // you can hear it burning
+  S.units.forEach(u => {
+    if (u.ruin > 0 && (u.ruin -= dt) <= 0) { u.ruin = 0; u.wait = repWait(rand(5, 10)); say(`Unit ${S.units.indexOf(u) + 1} has been rebuilt.`); }
+    if (!(u.fire > 0)) return;
+    u.fire += FIRE.grow * k * dt;
+    spend("Coins", FIRE.damage * S.tier * dt); S.damages += FIRE.damage * S.tier * dt;
+    if (u.fire >= 100) {
+      const n = S.units.indexOf(u) + 1;
+      u.fire = 0; u.hazards = [];
+      let died = false;
+      if (u.tenant) { if (Math.random() < 0.5) { killTenant(u, "in the fire"); died = true; } else vacate(u, "lost everything in the fire"); }
+      u.candidates = null; u.ruin = FIRE.rebuild; addProp(u, "scorch");
+      const cost = Math.round(FIRE.destroyCost * COST(S.tier)); spend("Coins", cost); S.damages += cost;
+      if (died) say(`Unit ${n} burned down. -${cost} Coins in damages.`); else crisisBanner(`Unit ${n} burned down`, `It will take ${FIRE.rebuild} seconds to rebuild.`, `-${cost} Coins in damages`);
+    }
+  });
+  if ((S.tFire += dt) >= 1) {   // spreading is checked once a second
+    S.tFire -= 1;
+    S.units.forEach((u, i) => {
+      if (!(u.fire > 40) || Math.random() >= FIRE.spread) return;
+      const next = S.units[i + (Math.random() < 0.5 ? -1 : 1)];
+      if (next && !(next.fire > 0) && !(next.ruin > 0)) { next.fire = 10; say(`The fire spread to unit ${S.units.indexOf(next) + 1}.`); sfx("spread"); }
+    });
+  }
+}
+function extinguish(i) {
+  const u = S.units[i];
+  if (!(u.fire > 0) || S.extCd > 0) return;
+  S.extCd = FIRE.cooldown; u.fire -= FIRE.extinguish; sfx("extinguish");
+  if (u.fire <= 0) { u.fire = 0; say(`The fire in unit ${i + 1} is out.`); sfx("good"); }
+}
+
+/* Possession: the tenant attacks the other units until you exorcise and evict them. */
+const POSSESSION = {every:4, moodHit:8, sanityHit:2, cost:150};
+function possess(u) {
+  u.tenant.possessed = true; u.tenant.hauntIn = POSSESSION.every; addProp(u, "ghost");
+  S.chaos = clamp(S.chaos + 3, 0, CHAOS_MAX);
+  crisisBanner(`${u.tenant.name} is possessed`, "They're attacking the other units. Exorcise and evict them from their card.", "Everyone else is suffering", "ghost");
+}
+const exorciseCost = () => Math.round(POSSESSION.cost * COST(S.tier));
+function tickPossession(dt) {
+  const k = IMPACT(S.tier);
+  S.units.forEach(u => {
+    const t = u.tenant;
+    if (!t || !t.possessed || (t.hauntIn -= dt) > 0) return;
+    t.hauntIn = POSSESSION.every;
+    const victims = S.units.filter(v => v.tenant && v !== u);
+    if (!victims.length) return;
+    const v = pick(victims);
+    setMood(v.tenant, v.tenant.mood - POSSESSION.moodHit * k); adjustSanity(-POSSESSION.sanityHit);
+    if (Math.random() < 0.3) addProp(v, "ghost");
+    if (Math.random() < 0.04) killTenant(v, "after an attack by their possessed neighbour");
+  });
+}
+function exorcise(i) {
+  const u = S.units[i];
+  if (!u.tenant || !u.tenant.possessed) return;
+  spend("Coins", exorciseCost()); adjustSanity(5);
+  vacate(u, "was exorcised and evicted", 3);
+}
+
+/* Building-wide crises: aliens and rats. They wear off, or you can pay to end them now. */
+const CRISES = {
+  aliens: {name:"Alien invasion", time:40, mood:1.2, spawn:2.5, prop:"alien", cost:200, fix:"Bribe the mothership"},
+  rats:   {name:"Rat invasion",   time:45, mood:1.5, spawn:3,   prop:"rat",   cost:250, fix:"Hire exterminators"},
+};
+const crisisCost = kind => Math.round(CRISES[kind].cost * COST(S.tier));
+function startCrisis(kind) {
+  const c = CRISES[kind], fresh = !(S.crises[kind] > 0);
+  S.crises[kind] = Math.max(S.crises[kind] || 0, c.time);
+  if (fresh) { S.chaos = clamp(S.chaos + 3, 0, CHAOS_MAX); crisisBanner(c.name, kind === "aliens" ? "Their friends are coming over. All of them." : "They are everywhere and they are hungry.", "Everyone's mood is dropping", kind); }
+}
+function tickCrises(dt) {
+  const k = IMPACT(S.tier);
+  for (const kind of Object.keys(CRISES)) {
+    if (!(S.crises[kind] > 0)) continue;
+    const c = CRISES[kind];
+    S.units.forEach(u => { if (u.tenant) setMood(u.tenant, u.tenant.mood - c.mood * k * dt); });
+    if ((S.spawn[kind] = (S.spawn[kind] || 0) + dt) >= c.spawn) {
+      S.spawn[kind] = 0; const u = pick(S.units.filter(x => x.tenant)); if (u) addProp(u, c.prop);
+    }
+    if (kind === "rats" && S.tier >= BARS.caps.tier && !(S.till.BottleCaps > 0)) S.crises.rats = Math.max(S.crises.rats, 5);   // no caps, no end
+    if ((S.crises[kind] -= dt) <= 0) { S.crises[kind] = 0; say(`The ${c.name.toLowerCase()} is over.`); sfx("good"); }
+  }
+}
+function endCrisis(kind) {
+  if (!(S.crises[kind] > 0)) return;
+  spend("Coins", crisisCost(kind)); S.crises[kind] = 0;
+  say(`${CRISES[kind].fix}: done.`); sfx("good");
+}
+
+/* Expenses and bottle caps */
+const BROKE_GRACE = 5;     // seconds at 0 Coins before you're bankrupt
+const CAPS_FULL = 300, CAPS_CRATE = 60;
+function activeCrises() {
+  return S.units.filter(u => u.fire > 0 || (u.tenant && u.tenant.possessed)).length + Object.values(S.crises).filter(v => v > 0).length;
+}
+function expenseRate() {
+  if (S.tier < BARS.expenses.tier) return 0;
+  const housed = S.units.filter(u => u.tenant).length, props = S.units.reduce((n, u) => n + (u.props || []).length, 0);
+  const k = 1 + (S.tier - BARS.expenses.tier) * 0.12;
+  return k * (0.3 * housed + 0.5 * S.chaos + 0.05 * props + 3 * activeCrises()) + staffCoinRate();   // Coin salaries count as expenses
+}
+function incomeRate() {
+  return S.units.reduce((n, u) => n + (u.tenant && u.tenant.currency === "Coins" ? u.tenant.rent : 0), 0) / RENT_SECONDS;
+}
+const capsUse = () => 1.5 + 0.3 * S.units.filter(u => u.tenant).length + (S.tier - BARS.caps.tier) * 0.2;   // caps per second
+const capsPrice = () => Math.round(70 * COST(S.tier));
+function buyCaps() {
+  const price = capsPrice();
+  if (S.tier < BARS.caps.tier || (S.till.Coins || 0) < price) return;
+  S.till.Coins -= price; S.till.BottleCaps = (S.till.BottleCaps || 0) + CAPS_CRATE; sfx("coin");
+}
+
+/* Random events with choices */
+function describeChoice(c) {
+  const fx = scaleFx(c.fx || {}), up = [], down = [], put = (v, text) => (v > 0 ? up : down).push(text), sg = n => (n > 0 ? "+" : "") + n;
+  if (fx.coins) put(fx.coins, `${sg(fx.coins)} Coins`);
+  if (fx.sanity) put(fx.sanity, `Your sanity ${sg(fx.sanity)}`);
+  if (fx.allMood) put(fx.allMood, `Everyone's mood ${sg(fx.allMood)}`);
+  if (fx.caps) up.push(`+${fx.caps} BottleCaps`);
+  if (fx.boiler) up.push(`Boiler +${fx.boiler}`);
+  if (fx.addUnit) up.push(`${fx.addUnit === true ? 1 : fx.addUnit} new unit${fx.addUnit > 1 ? "s" : ""}`);
+  if (fx.clearHazards) up.push("Removes hidden fire risks");
+  if (fx.rep) put(fx.rep, `Reputation ${sg(fx.rep)}`);
+  if (c.up) up.push(c.up);
+  if (c.down) down.push(c.down);
+  if (fx.chaos) put(-fx.chaos, fx.chaos > 0 ? "Expenses up" : "Expenses down");
+  [].concat(c.crisis || []).forEach(k => down.push(`Starts: ${RISKS[k]}`));
+  if (c.risk) down.push(`Risk: ${RISKS[c.risk]}`);
+  if (c.gamble) up.push(`${Math.round(c.gamble.p * 100)}% chance it pays off`);
+  return {up: up.join(", "), down: down.join(", ") || (up.length ? "" : "Nothing happens")};
+}
+function chooseEvent(ev, k) {
+  const c = ev.choices[k], out = applyEffects(scaleFx(c.fx || {}));
+  let sev = ev.sev, note = "";
+  if (c.run) note = c.run() || "";
+  [].concat(c.crisis || []).forEach(kind => trigger(kind));
+  if (c.risk) plantHazard(pick(S.units.filter(u => !(u.ruin > 0))), c.risk, true);
+  if (c.gamble) {
+    const won = Math.random() < c.gamble.p, side = won ? c.gamble.win : c.gamble.lose;
+    out.push(...applyEffects(scaleFx(side.fx || {})));
+    [].concat(side.crisis || []).forEach(kind => trigger(kind));
+    note = side.text; sev = won ? "good" : "bad";
+  }
+  notify({title:`${ev.title}: ${c.l}`, desc:note || ev.desc, outcome:out.join(", ") || "nothing obvious, yet", sev, ttl:7});
+  say(`${ev.title}: you chose "${c.l}"${note ? `. ${note}` : ""}${out.length ? ` (${out.join(", ")})` : ""}.`);
+}
+
+/* ============ Tenant events: things a tenant decides to do, whether you like it or not ============
+   self / neighbours / all = mood per second (neighbours are the units either side), sanity = yours per second,
+   stackEvery = seconds between extra issues piling onto the unit, spawn = a prop that keeps appearing,
+   endRisk = what might happen when it ends on its own, action = the card button that stops it early. */
+const MOOD_OVERFLOW = 150;   // only a party can push a tenant past 100
+const TENANT_EVENTS = {
+  party:  {sound:"party", name:"Party", t:1, weight:tier => 2 + tier * 0.6, time:[22, 30], self:4, overflow:true, neighbours:-1.2, stackEvery:3, act:"dance",
+           start:"{n} is throwing a party. Issues will pile up, and the neighbours are not invited.", action:{label:"Shut down the party", mood:-50}},
+  band:   {sound:"band", name:"Band practice", t:2, weight:() => 2, time:[18, 25], self:1.5, neighbours:-1.5, act:"dance",
+           start:"{n} has started a band. It is mostly drums.", action:{label:"Confiscate the drums", mood:-25}},
+  diy:    {sound:"build", name:"DIY renovation", t:2, weight:() => 2, time:[18, 24], self:1, neighbours:-0.6, act:"build", endRisk:{kind:"fire", p:0.4},
+           start:"{n} is renovating with power tools and no plan.", action:{label:"Stop the renovation", mood:-15}},
+  hoard:  {sound:"blip", name:"Hoarding spree", t:1, weight:() => 1.5, time:[15, 20], self:1, spawn:{prop:"junk", every:2}, chaos:2, act:"wander",
+           start:"{n} has started bringing things home. Lots of things.", action:{label:"Clear it out", cost:60, mood:-10}},
+  strike: {sound:"siren", name:"Rent strike", t:3, weight:() => 2, time:[20, 28], self:0, neighbours:-0.5, skipRent:true, act:"picket",
+           start:"{n} is on rent strike and is recruiting the neighbours.", action:{label:"Negotiate", cost:120, mood:10}},
+  ritual: {sound:"chant", name:"Summoning", t:4, weight:() => 1.5, time:[18, 24], self:1, neighbours:-0.8, sanity:-0.3, act:"ritual", endRisk:{kind:"ghost", p:0.5},
+           start:"{n} has drawn a circle on the floor and is chanting.", action:{label:"Break the circle", mood:-20, sanity:-6}},
+  talent: {sound:"good", name:"Talent show", t:5, weight:() => 1.5, time:[15, 20], self:2, neighbours:0.8, act:"dance",
+           start:"{n} is putting on a talent show. It's actually good."},
+  clones: {sound:"zap", name:"Cloning spree", t:7, weight:() => 1.5, time:[18, 24], self:1, all:-0.6, spawn:{prop:"clone", every:4}, chaos:3, act:"wander",
+           start:"{n} has found a way to make more {n}.", action:{label:"Unplug the vat", cost:200}},
+  cooking:{sound:"sizzle", name:"Cooking experiment", t:1, weight:() => 1.5, time:[15, 22], self:1, neighbours:-0.5, act:"cook", endRisk:{kind:"fire", p:0.5},
+           start:"{n} is attempting a recipe that involves a blowtorch.", action:{label:"Confiscate the pan", mood:-15}},
+  pets:   {sound:"rats", name:"Pet adoption spree", t:2, weight:() => 1.5, time:[18, 24], self:2, neighbours:-0.4, spawn:{prop:"pet", every:3}, endRisk:{kind:"rats", p:0.3}, act:"wander",
+           start:"{n} keeps coming home with animals. Some of them are animals.", action:{label:"Call animal control", cost:80, mood:-20}},
+  sports: {sound:"skate", name:"Extreme sports", t:3, weight:() => 1.5, time:[14, 20], self:2.5, neighbours:-0.8, endRisk:{kind:"death", p:0.15}, deathText:"attempting a kickflip off the fridge", act:"skate",
+           start:"{n} is skateboarding off the furniture. Indoors.", action:{label:"Confiscate the skateboard", mood:-20}},
+  lab:    {sound:"zap", name:"Secret lab", t:4, weight:() => 1.5, time:[20, 26], self:1, neighbours:-0.6, spawn:{prop:"lab", every:5}, chaos:3, endRisk:{kind:"aliens", p:0.5}, act:"build",
+           start:"{n} has turned the bathroom into a laboratory. It hums.", action:{label:"Shut down the lab", cost:150}},
+  weather:{sound:"thunder", name:"Weather machine", t:6, weight:() => 1.5, time:[18, 24], self:1, all:-0.4, spawn:{prop:"puddle", every:4}, endRisk:{kind:"fire", p:0.3}, act:"window",
+           start:"{n} built a weather machine. It is raining on everyone.", action:{label:"Unplug the machine", cost:150}},
+  sale:   {sound:"cash", name:"Interdimensional yard sale", t:8, weight:() => 1.5, time:[18, 24], self:2, neighbours:-0.6, spawn:{prop:"junk", every:1.5}, chaos:4, endRisk:{kind:"aliens", p:0.4}, act:"wander",
+           start:"{n} is selling things from other dimensions in the hallway.", action:{label:"Close the sale", mood:-30}},
+};
+const JUNK = ["box","trash","cheese","pennies","bowling","paper","cone","fishbowl"];
+const tenantEventEvery = tier => Math.max(8, 30 - (tier - 1) * 1.5);   // seconds between tenant events
+function setMood(t, v) { t.mood = clamp(v, 0, Math.max(100, t.mood)); }   // decreases keep any party overflow; increases stop at 100
+function softBanner(title, desc, outcome, sev) {
+  notify({title, desc, outcome, sev, ttl:6});
+}
+function startTenantEvent(forcedUnit, forcedKind, forcedText) {
+  if (forcedUnit && (!forcedUnit.tenant || forcedUnit.tenant.event)) {   // already busy: they settle for a bad review
+    S.rep = Math.max(0, S.rep - 5); say(`${forcedUnit.tenant ? forcedUnit.tenant.name : "Someone"} complained about you online. Reputation -5.`); return;
+  }
+  const pool = forcedUnit ? [forcedUnit] : S.units.filter(u => u.tenant && !u.tenant.event && !u.tenant.possessed && !(u.fire > 0));
+  if (!pool.length) return;
+  const kinds = Object.keys(TENANT_EVENTS).filter(k => TENANT_EVENTS[k].t <= S.tier);
+  let roll = Math.random() * kinds.reduce((sum, k) => sum + TENANT_EVENTS[k].weight(S.tier), 0);
+  const kind = forcedKind || kinds.find(k => (roll -= TENANT_EVENTS[k].weight(S.tier)) < 0) || kinds[0];
+  const def = TENANT_EVENTS[kind], u = pick(pool), t = u.tenant;
+  t.event = {kind, left: rand(def.time[0], def.time[1]), stackT:0, spawnT:0};
+  if (def.skipRent) t.behind = "skipped";
+  if (def.chaos) S.chaos = clamp(S.chaos + def.chaos, 0, CHAOS_MAX);
+  const text = forcedText || def.start.replaceAll("{n}", t.name);
+  softBanner(`${def.name} in unit ${S.units.indexOf(u) + 1}`, text, def.action ? `Stop it from their card: ${def.action.label}` : "Nothing to do but enjoy it", def.neighbours < 0 || def.all < 0 ? "chaotic" : "good");
+  say(text); sfx(def.sound || "issue");
+}
+function endTenantEvent(u, natural) {
+  const t = u.tenant, def = TENANT_EVENTS[t.event.kind];
+  t.event = null;
+  say(`${t.name}'s ${def.name.toLowerCase()} is over.`);
+  if (natural && def.endRisk && Math.random() < def.endRisk.p) {
+    const r = def.endRisk.kind;
+    if (r === "ghost") possess(u); else if (r === "fire") ignite(u); else if (r === "death") killTenant(u, def.deathText || "in an accident");
+    else if (r === "aliens" || r === "rats") startCrisis(r);
+  }
+}
+function tickTenantEvents(dt) {
+  const hasEvent = kind => S.units.some(u => u.tenant && u.tenant.event && u.tenant.event.kind === kind);
+  if (hasEvent("party") && (S.tBeat = (S.tBeat || 0) + dt) >= 1) { S.tBeat = 0; sfx("beat"); }   // you can hear it from here
+  if (hasEvent("band") && (S.tDrums = (S.tDrums || 0) + dt) >= 0.35) { S.tDrums = 0; S.drumBeat = (S.drumBeat || 0) + 1; sfx("drums", S.drumBeat); }
+  if ((S.tTenEv += dt) >= tenantEventEvery(S.tier)) { S.tTenEv = 0; startTenantEvent(); }
+  const k = IMPACT(S.tier);
+  S.units.forEach((u, i) => {
+    const t = u.tenant;
+    if (!t || !t.event) return;
+    const e = t.event, def = TENANT_EVENTS[e.kind];
+    if (def.overflow) t.mood = Math.min(MOOD_OVERFLOW, t.mood + def.self * dt); else setMood(t, t.mood + def.self * dt);
+    if (def.neighbours) [S.units[i - 1], S.units[i + 1]].forEach(n => { if (n && n.tenant) setMood(n.tenant, n.tenant.mood + def.neighbours * k * dt); });
+    if (def.all) S.units.forEach(n => { if (n.tenant && n !== u) setMood(n.tenant, n.tenant.mood + def.all * k * dt); });
+    if (def.sanity) adjustSanity(def.sanity * k * dt);
+    if (def.stackEvery && (e.stackT += dt) >= def.stackEvery) {   // issues flare up and pile onto the unit
+      e.stackT = 0;
+      if (!t.issue) giveIssue(t); else { t.stack = Math.min(9, (t.stack || 0) + 1); sfx("blip"); }
+    }
+    if (def.spawn && (e.spawnT += dt) >= def.spawn.every) {
+      e.spawnT = 0;
+      const sp = def.spawn.prop;
+      addProp(u, sp === "junk" ? pick(JUNK) : sp === "pet" ? pick(["squirrel","raccoon","rat","fishbowl"]) : sp === "lab" ? pick(["portal","clock","eye"]) : sp);
+    }
+    if ((e.left -= dt) <= 0) endTenantEvent(u, true);
+  });
+}
+const eventActionCost = def => Math.round((def.action.cost || 0) * COST(S.tier));
+function stopTenantEvent(i) {
+  const u = S.units[i], t = u.tenant;
+  if (!t || !t.event) return;
+  const def = TENANT_EVENTS[t.event.kind], a = def.action, k = IMPACT(S.tier);
+  if (!a || (S.till.Coins || 0) < eventActionCost(def)) return;
+  if (a.cost) S.till.Coins -= eventActionCost(def);
+  if (a.mood) setMood(t, t.mood + a.mood * k);
+  if (a.sanity) adjustSanity(a.sanity);
+  endTenantEvent(u, false);
+  say(`${a.label}: done.`); sfx("click");
+}
+
+/* ============ Everyday life: what a tenant gets up to between your visits ============ */
+function planActivity(t) {
+  const anywhere = () => ({x: rand(4, 52), y: rand(9, 31)});
+  if (t.issue) return {...anywhere(), act:null, time:0.3};   // pacing
+  if (t.event) {
+    const act = TENANT_EVENTS[t.event.kind].act;
+    if (act === "ritual") return {x:28, y:17, act, time:3};
+    if (act === "wander") return {...anywhere(), act:null, time:rand(0.3, 1)};
+    if (act === "cook") return {x:40, y:8, act, time:3};
+    if (act === "window") return {x:28, y:6, act, time:3};
+    if (act === "skate") return {...anywhere(), act:"skate", time:0.2};
+    return {x: rand(12, 44), y: rand(11, 28), act, time: act === "picket" ? 1 : 2};
+  }
+  const options = [
+    [4, () => ({...anywhere(), act:null, time:rand(0.5, 3)})],
+    [1, () => ({x:6, y:9, act:"nap", time:5})],
+    [1, () => ({x:40, y:8, act:"eat", time:3})],
+    [1, () => ({...anywhere(), act:"read", time:4})],
+    [1, () => ({...anywhere(), act:"exercise", time:3})],
+    [1, () => ({x:28, y:6, act:"window", time:3})],
+    [1, () => ({...anywhere(), act:"phone", time:3})],
+    [t.mood >= 70 ? 1 : 0, () => ({...anywhere(), act:"dance", time:3})],
+    [S.tier >= 4 ? 1 : 0, () => ({x: Math.random() < 0.5 ? 2 : 55, y: rand(10, 30), act:"stare", time:4})],
+    [S.tier >= 5 ? 1 : 0, () => ({...anywhere(), act:"levitate", time:3})],
+  ];
+  let roll = Math.random() * options.reduce((sum, [w]) => sum + w, 0);
+  return (options.find(([w]) => (roll -= w) < 0) || options[0])[1]();
+}
+
+/* Backlash: tenants you push back on may retaliate. The odds rise every tier. */
+const backlashChance = () => clamp(0.2 + 0.03 * (S.tier - 1), 0.2, 0.65);
+const BACKLASH = [
+  {t:1, run:u => startTenantEvent(u, "party", `${u.tenant.name} is throwing a spite party.`)},
+  {t:1, run:u => { S.rep = Math.max(0, S.rep - 8); say(`${u.tenant.name} left you a one-star review. Reputation -8.`); sfx("bad"); }},
+  {t:2, run:u => startTenantEvent(u, "band", `${u.tenant.name} has taken up the drums. Out of spite.`)},
+  {t:2, run:u => { plantHazard(u, "fire", true); say(`${u.tenant.name} muttered something about matches.`); }},
+  {t:2, run:u => startTenantEvent(u, "cooking", `${u.tenant.name} is stress-cooking. Aggressively.`)},
+  {t:3, run:u => startTenantEvent(u, "strike", `${u.tenant.name} has gone on rent strike in protest.`)},
+  {t:3, run:u => { plantHazard(u, "ghost", true); say(`${u.tenant.name} is muttering a curse in your direction.`); sfx("ghost"); }},
+  {t:4, run:u => startTenantEvent(u, "ritual", `${u.tenant.name} is summoning something to complain to.`)},
+  {t:5, run:u => { plantHazard(u, "aliens", true); say(`${u.tenant.name} is making a very long-distance call about you.`); }},
+  {t:6, run:u => startTenantEvent(u, "lab", `${u.tenant.name} is building something in revenge.`)},
+];
+function backlash(u) {
+  if (!u.tenant) return;
+  pick(BACKLASH.filter(b => b.t <= S.tier)).run(u);
+}
+
+/* ============ Staff: late-game employees who resolve issues for you, their own way ============ */
+const STAFF_FROM_TIER = 8, STAFF_MAX = 4;
+let actingStaff = null;   // set while an employee resolves an issue, so the notice board credits them
+// pick = how they choose an option; speed = seconds per issue; salary = per second, before late-game price scaling.
+const STAFF_TYPES = {
+  book:     {name:"By the Book",            normal:true, pick:"sanity",   speed:9,  salary:5,   desc:"Always pushes back. Good for your sanity, hard on tenants."},
+  pleaser:  {name:"People Pleaser",         normal:true, pick:"mood",     speed:8,  salary:5,   desc:"Gives tenants whatever they ask for."},
+  pincher:  {name:"Penny Pincher",          normal:true, pick:"money",    speed:10, salary:4,   desc:"Takes whichever option makes or saves the most Coins."},
+  pr:       {name:"PR Manager",                          pick:"rep",      speed:9,  salary:6,   desc:"Picks whatever looks best for your reputation."},
+  diligent: {name:"Suspiciously Diligent",               pick:"mood",     speed:4,  salary:1.5, desc:"Works fast, asks for very little. Almost too good to be true.", schemeChance:0.6},
+  chaos:    {name:"Chaos Agent",            weird:true,  pick:"chaos",    speed:5,  salary:3,   desc:"Picks at random, and loves a risky option."},
+  evictor:  {name:"The Evictor",            weird:true,  pick:"evict",    speed:7,  salary:4,   desc:"If there's a way to get rid of the tenant, they'll take it."},
+  oracle:   {name:"Oracle",                 weird:true,  pick:"balanced", speed:12, salary:6,   desc:"Weighs everything and picks the most balanced option.", cur:"Vibes"},
+};
+const STAFF_NAMES = [
+  ["Dave from HR","Linda Park","Marcus","Priya","Tom the Handyman","Janet","Ollie","Sandra Okafor"],   // first few hires: ordinary
+  ["A Very Tall Intern","Gary's Lawyer","Mr. Clipboard","Night-Shift Nadia","The Temp Who Stayed","Brenda (Consultant)","Unpaid Steve"],
+  ["Seven Bees in a Lanyard","The Concept of Customer Service","Employee #∞","A Suit With Nobody In It","Middle Management Itself","Kevin (Corporate Edition)","The Shadow Of HR"],
+];
+function staffSalary(e) { return e.cur === "Coins" ? e.salary * COST(S.tier) : e.salary * 1.2; }
+const staffCoinRate = () => (S.staff || []).filter(e => e.cur === "Coins" && !(e.strike > 0)).reduce((n, e) => n + staffSalary(e), 0);
+function makeCandidates() {
+  const weirdness = Math.min(2, Math.floor(S.hires / 3));   // the more you hire, the stranger they get
+  const types = Object.keys(STAFF_TYPES).filter(k => weirdness > 0 || !STAFF_TYPES[k].weird);
+  const used = new Set(S.staff.map(e => e.name));
+  return [0, 1, 2].map(() => {
+    const type = Math.random() < 0.25 ? pick(["book","pleaser","pincher"]) : pick(types);   // a few normal ones, surprisingly
+    let name = pick(STAFF_NAMES[Math.random() < 0.3 ? Math.max(0, weirdness - 1) : weirdness]);
+    if (used.has(name)) name += " Jr."; used.add(name);
+    const T = STAFF_TYPES[type];
+    const cur = T.cur || (Math.random() < 0.3 ? pick(["Pennies","Teeth","BottleCaps","Vibes"]) : "Coins");
+    return {id: Math.random().toString(36).slice(2), name, type, cur, salary: T.salary * (cur === "Coins" ? 1 : 0.8), task:null, strike:0, leave:0, unpaid:0, cult:0,
+            scheme: T.schemeChance && Math.random() < T.schemeChance ? {p:0} : null};
+  });
+}
+function hire(c) {
+  if (S.staff.length >= STAFF_MAX) return;
+  S.staff.push(c); S.hires++;
+  say(`You hired ${c.name} (${STAFF_TYPES[c.type].name}).`); sfx("cash");
+}
+function fire(id) {
+  const e = S.staff.find(x => x.id === id); if (!e) return;
+  S.staff = S.staff.filter(x => x !== e);
+  if (e.scheme) {
+    S.rep = Math.min(100, S.rep + 8); adjustSanity(10);
+    notify({title:`You caught ${e.name}`, desc:"They were plotting with the tenants to take the building from you.", outcome:"Reputation +8, sanity +10", sev:"good", ttl:8});
+    say(`You fired ${e.name} and found the plans for a tenant uprising in their desk.`); sfx("good");
+  } else if (e.thief) {
+    const back = Math.round(e.thief.stolen * 0.5); S.till.Coins = (S.till.Coins || 0) + back; S.rep = Math.min(100, S.rep + 3);
+    notify({title:`${e.name} was stealing from you`, desc:"You fired them and recovered some of it.", outcome:`+${back} Coins back`, sev:"good", ttl:7});
+    say(`You fired ${e.name} and recovered ${back} Coins.`); sfx("cash");
+  } else if (e.cult > 0) {
+    say(`You fired ${e.name}. The staff cult disbands, mostly.`); sfx("good");
+  } else { say(`You fired ${e.name}.`); sfx("thud"); }
+}
+// How each personality scores an option (higher wins).
+function staffScore(kind, o) {
+  const s = o.s !== undefined ? o.s : -(o.m || 0), mood = (o.m || 0) + (o.all || 0) * 2, money = (o.gain || 0) - (o.cost || 0) + (o.r || 0) * 3, rep = o.rep || 0;
+  if (kind === "sanity") return s;
+  if (kind === "mood") return mood;
+  if (kind === "money") return money;
+  if (kind === "rep") return rep * 5 + s * 0.1;
+  if (kind === "chaos") return Math.random() * 10 + (o.risk ? 8 : 0);
+  if (kind === "evict") return o.evict ? 100 : -mood;
+  return s * 0.5 + mood * 0.5 + rep * 2 + money / 50 - (o.risk ? 10 : 0);   // balanced
+}
+function tickStaff(dt) {
+  if (!S.staff.length) return;
+  const claimed = new Set(S.staff.filter(e => e.task).map(e => e.task.unit));
+  for (const e of [...S.staff]) {
+    const T = STAFF_TYPES[e.type];
+    if (e.cur !== "Coins") spend(e.cur, staffSalary(e) * dt);   // Coins salaries are part of Expenses
+    e.unpaid = (S.till[e.cur] || 0) <= 0 ? e.unpaid + dt : 0;
+    if (e.unpaid > 15) { S.staff = S.staff.filter(x => x !== e); S.rep = Math.max(0, S.rep - 2); say(`${e.name} quit: they weren't being paid.`); sfx("bad"); continue; }
+    if (e.strike > 0) { e.strike -= dt; continue; }
+    if (e.leave > 0) { e.leave -= dt; continue; }
+    if (e.cult > 0 && (e.cult -= dt) <= 0) {
+      S.rep = Math.max(0, S.rep - 15); adjustSanity(-15);
+      crisisBanner(`${e.name}'s staff cult went public`, "It was on the local news. Twice.", "Reputation -15, sanity -15", "chant");
+    }
+    if (e.thief && (e.thief.t += dt) >= 8) {
+      e.thief.t = 0; e.thief.left -= 8;
+      const take = Math.floor((S.till.Coins || 0) * 0.03); S.till.Coins -= take; e.thief.stolen += take;
+      if (Math.random() < 0.5) say(pick(["The till seems lighter than it should.", `${e.name} came in with a new watch.`, "Some receipts don't add up.", `${e.name} has started taking calls in the stairwell.`]));
+      if (e.thief.left <= 0) { S.staff = S.staff.filter(x => x !== e); S.rep = Math.max(0, S.rep - 5); crisisBanner(`${e.name} vanished`, `They took ${e.thief.stolen} Coins with them.`, "Reputation -5"); continue; }
+    }
+    if (e.scheme) {   // the plot advances faster when tenants are unhappy
+      e.scheme.p += dt * (0.8 + 0.15 * S.units.filter(u => u.tenant && u.tenant.mood < 40).length);
+      if ((e.scheme.clue = (e.scheme.clue || 0) + dt) >= rand(12, 20)) { e.scheme.clue = 0; schemeClue(e); }
+      if (!e.scheme.warned && e.scheme.p >= 60) { e.scheme.warned = true; softBanner("Something is off", "The tenants have started calling someone else 'the boss'.", "Pay attention to your staff", "chaotic"); sfx("chant"); }
+      if (e.scheme.p >= 100) return endGame("overthrown");
+    }
+    // Work: claim the issue that has waited longest, then resolve it after a while
+    if (!e.task) {
+      const open = S.units.map((u, i) => ({u, i})).filter(({u, i}) => u.tenant && u.tenant.issue && !claimed.has(i))
+        .sort((a, b) => (b.u.tenant.stack || 0) - (a.u.tenant.stack || 0) || b.u.tenant.issueAge - a.u.tenant.issueAge);
+      if (open.length) { e.task = {unit: open[0].i, left: T.speed * rand(0.8, 1.2)}; claimed.add(open[0].i); }
+      continue;
+    }
+    if ((e.task.left -= dt) > 0) continue;
+    const i = e.task.unit, t = S.units[i] && S.units[i].tenant; e.task = null;
+    if (!t || !t.issue) continue;
+    const opts = t.issue.opts.map((o, k) => ({o: scaleOpt(o), k})).filter(({o}) => !(o.cost > (S.till.Coins || 0)));
+    if (!opts.length) continue;
+    const best = opts.reduce((a, b) => (staffScore(T.pick, b.o) > staffScore(T.pick, a.o) ? b : a));
+    const title = t.issue.title, label = best.o.l;
+    actingStaff = e.name; resolveIssue(i, best.k); actingStaff = null;
+  }
+}
+function schemeClue(e) {
+  const housed = S.units.filter(u => u.tenant), u = pick(housed), n = u ? S.units.indexOf(u) + 1 : 1, tn = u ? u.tenant.name : "a tenant";
+  const named = [`${e.name} was seen leaving unit ${n} at 3 AM.`, `${tn} called ${e.name} "the real landlord".`, `${e.name} asked for a copy of the building's deed. For filing.`,
+                 `The tenants started a group chat. ${e.name} is an admin.`, `${e.name} turned down a raise. Again.`, `${tn} winked at ${e.name} in the hallway.`];
+  const vague = ["Someone has been copying the master keys.", "There's a flag in the lobby you didn't put there.", "The tenants stop talking when you walk in."];
+  say(Math.random() < 0.6 ? pick(named) : pick(vague));
+  // Innocent staff sometimes look suspicious too, so you have to pay attention.
+  const others = S.staff.filter(x => x !== e && !x.scheme);
+  if (others.length && Math.random() < 0.35) { const o = pick(others); say(pick([`${o.name} was seen leaving unit ${n} at 3 AM. They were fixing a pipe.`, `${o.name} has been very quiet today.`])); }
+}
+// Staff events: the stakes are high and some need a decision.
+function staffEvent() {
+  const active = S.staff.filter(e => !(e.strike > 0));
+  if (!active.length) return;
+  const e = pick(active), roll = Math.random();
+  if (roll < 0.3 && S.staff.length >= 1) {
+    openDialog("event", {title:"The staff are on strike", desc:"Your employees want a raise, effective immediately. There are picket signs in the lobby.", sev:"chaotic", choices:[
+      {l:"Give in", fx:{sanity:4, rep:2}, down:"All salaries +50%", run:() => { S.staff.forEach(x => x.salary *= 1.5); return "Everyone's back at work, for a price."; }},
+      {l:"Resist", fx:{sanity:-10, rep:-6}, down:"Staff stop working for 40s, someone may quit", run:() => { S.staff.forEach(x => { x.strike = 40; x.task = null; }); if (Math.random() < 0.4) { const q = pick(S.staff); S.staff = S.staff.filter(x => x !== q); return `${q.name} quit on the spot.`; } return "They're picketing. Loudly."; }},
+      {l:"Fire everyone", fx:{rep:-8}, down:"You lose all your staff", run:() => { const schemer = S.staff.some(x => x.scheme); S.staff = []; return schemer ? "Somewhere, a tenant uprising loses its leader." : "The office is very quiet now."; }},
+    ]});
+    sfx("siren");
+  } else if (roll < 0.55) {
+    openDialog("event", {title:`${e.name} is having a breakdown`, desc:`${e.name} is in the lobby explaining, at length, what this job has done to them.`, sev:"chaotic", choices:[
+      {l:"Give them time off", down:"They stop working for 60s", run:() => { e.leave = 60; e.task = null; return `${e.name} is taking some time.`; }},
+      {l:"Pay for therapy", fx:{coins:-150, sanity:5}},
+      {l:"Tell them to toughen up", fx:{sanity:-15, rep:-4}, down:"They may quit", run:() => { if (Math.random() < 0.5) { S.staff = S.staff.filter(x => x !== e); return `${e.name} quit and told everyone why.`; } return `${e.name} is back at their desk, staring.`; }},
+    ]});
+    sfx("bad");
+  } else if (roll < 0.8 && !e.thief && !e.scheme) {
+    e.thief = {t:0, left:60, stolen:0};   // silent: only the clues give it away
+  } else if (!e.cult) {
+    e.cult = 40;
+    softBanner(`${e.name} has started a staff cult`, "There are robes in the break room. Fire them within 40 seconds or it goes public.", "Reputation and sanity at risk", "chaotic"); sfx("chant");
+  }
+}
+function tickStaffEvents(dt) {
+  if (S.tier < STAFF_FROM_TIER || !S.staff.length) return;
+  if ((S.tStaffEv += dt) >= 50) { S.tStaffEv = 0; staffEvent(); }
+}
+
+function checkMoveOut(u, certainOnly) {
+  const t = u.tenant;
+  if (!t) return;
+  if (t.mood <= 0) vacate(u, "moved out");
+  else if (!certainOnly && t.mood < CRITICAL_MOOD && Math.random() < CRITICAL_LEAVE_CHANCE) vacate(u, "had enough and moved out");
+}
+function handOutIssue() {
+  const eligible = S.units.filter(u => u.tenant && !u.tenant.issue);
+  if (!eligible.length) return;
+  giveIssue(pick(eligible).tenant);
+}
+function giveIssue(t) {
+  // Every issue from tier 1 up to the current tier can appear; the newest tier's are the most likely.
+  const top = Math.min(S.tier, Math.max(...ISSUES.map(i => i.t)));
+  const open = new Set(S.units.filter(u => u.tenant && u.tenant.issue).map(u => u.tenant.issue.src));
+  let pool = ISSUES.filter(i => i.t <= top && !open.has(i.title));
+  if (!pool.length) pool = ISSUES.filter(i => i.t <= top);
+  let roll = Math.random() * pool.reduce((sum, i) => sum + (i.t === top ? ISSUE_FRESH_WEIGHT : 1), 0);
+  const src = pool.find(i => (roll -= (i.t === top ? ISSUE_FRESH_WEIGHT : 1)) < 0) || pool[0];
+  const fill = text => text.replaceAll("{n}", t.name);
+  t.issue = {src:src.title, title:fill(src.title), desc:fill(src.desc), opts:src.opts.map(o => ({...o, l:fill(o.l)}))};
+  t.issueAge = 0;
+  sfx("issue");
+}
+
+function tick(dt) {
+  if (!S.running || S.over || dialog) return;   // open dialog = paused
+  S.tTier += dt; S.tIssue += dt; S.tRent += dt; S.tCheck += dt; S.tEvent += dt;
+  if (S.tier >= MINI_FROM_TIER && (S.tMini += dt) >= miniEvery(S.tier)) { S.tMini = 0; startMini(); return; }
+  S.shopCooldown = Math.max(0, S.shopCooldown - dt);
+  S.notes.forEach(n => n.ttl -= dt);
+  if (S.notes.some(n => n.ttl <= 0)) S.notes = S.notes.filter(n => n.ttl > 0);
+  if (S.tEvent >= EVENT_SECONDS(S.tier)) { S.tEvent = 0; randomEvent(); }
+  if (S.tTier >= TIER_SECONDS) {
+    S.tTier -= TIER_SECONDS; S.tier++;
+    S.units.push({tenant:null, candidates:null, wait:repWait(rand(3, 6))});   // no cap: one more unit per tier
+    shake(); sfx("tier");
+    const unlocked = Object.values(BARS).find(b => b.tier === S.tier);
+    if (S.tier === STAFF_FROM_TIER) { notify({title:"You can hire staff", desc:"Employees resolve issues for you, each in their own way. They're expensive, and not all of them can be trusted.", outcome:"Use the Hire staff button", sev:"chaotic", ttl:9}); say("You can now hire staff."); }
+    if (unlocked === BARS.caps) S.till.BottleCaps = (S.till.BottleCaps || 0) + CAPS_CRATE;
+    if (unlocked) { notify({title:`New meter: ${unlocked.name}`, desc:unlocked.how, outcome:"It's at the bottom of the screen.", sev:"chaotic", ttl:9}); say(`New meter: ${unlocked.name}. ${unlocked.how}`); }
+    if (S.tier === QUICK_FROM_TIER) say("Quick tasks will now pop up at the bottom of the screen. The clock keeps running.");
+    say(`Tier ${S.tier}. ${S.tier <= TIER_NAMES.length ? "Things get " + tierName(S.tier).toLowerCase() + "." : "It keeps getting worse."} Unit ${S.units.length} opens.`);
+  }
+  const issueEvery = Math.max(3, ISSUE_SECONDS - (S.tier - 1) * 0.5);   // more units, more trouble
+  if (S.tIssue >= issueEvery) { S.tIssue -= issueEvery; handOutIssue(); }
+  if (S.tRent >= RENT_SECONDS) {
+    S.tRent -= RENT_SECONDS;
+    collectRent(true);   // automatic: everyone living here pays each cycle
+  }
+  adjustSanity(-sanityDrain(S.tier) * dt);
+  tickBars(dt); tickQuick(dt);
+  tickHazards(dt); tickFire(dt); tickPossession(dt); tickCrises(dt); tickTenantEvents(dt); tickBodies(dt); tickStaff(dt); tickStaffEvents(dt);
+  for (const u of S.units) {
+    const t = u.tenant;
+    if (t && t.issue) {
+      const before = t.issueAge; t.issueAge += dt;
+      const over = t.issueAge - Math.max(before, STALE_GRACE);   // only the part past the grace period
+      if (over > 0) setMood(t, t.mood - STALE_DRAIN * over);
+    }
+    if (t && t.stack) adjustSanity(-0.2 * t.stack * dt);   // a pile of issues wears on you
+    if (t && t.mood > 100 && !(t.event && t.event.kind === "party")) t.mood = Math.max(100, t.mood - 2 * dt);   // the afterglow fades
+    if (t && t.lateIn > 0 && (t.lateIn -= dt) <= 0) { payRent(t); t.behind = "paid"; say(`${t.name} paid late.`); sfx("coin"); }
+    if (!t && !u.candidates && !(u.ruin > 0) && !(u.body > 0)) { u.wait -= dt; if (u.wait <= 0) u.candidates = makeApplicants(); }
+  }
+  if (S.tCheck >= 1) { S.tCheck -= 1; S.units.forEach(u => checkMoveOut(u, false)); }
+  if (S.sanity <= 0) endGame("insanity");
+  else if (!S.units.some(u => u.tenant)) endGame("vacant");
+}
+function endGame(reason) {
+  if (S.over) return;
+  if (reason === "arrested") setTimeout(() => sfx("siren"), 400);
+  S.over = reason; S.running = false; sfx("over");
+  let best = 0;
+  try { best = +localStorage.getItem("ln-best-tier") || 0; if (S.tier > best) localStorage.setItem("ln-best-tier", S.tier); } catch (e) {}
+  openDialog("over");
+  S.bestBefore = best;
+}
+
+/* ============ View ============ */
+const $ = id => document.getElementById(id);
+const grid = $("grid");
+let dialog = null;   // {kind:"issue"|"apply"|"over", unit}
+
+function tillText() {
+  const keys = Object.keys(S.till).filter(k => S.till[k] > 0).sort();
+  return keys.length ? keys.map(k => `${S.till[k]} ${k}`).join(", ") : "nothing yet";
+}
+function moodColor(m) { return m >= 60 ? "var(--good)" : m >= 30 ? "var(--warn)" : "var(--bad)"; }
+
+const SIGNS = ["Vacancies · inquire within","Vacancies · don't ask about the closet","Vacancies · subject to raccoon approval",
+  "Vacancies · inquire without","The building is inquiring within you","HELP · inquire within","There have always been this many units"];
+const GLYPHS = ["?","∞","½","−1","π","█","again","no"];
+const FX = [["fx-flicker",2],["fx-wobble",3],["fx-glitch",4],["fx-sway",5],["fx-hue",6],["fx-melt",7],["fx-drift",8],["fx-invert",9],["fx-breathe",11],["fx-mirror",13],["fx-sky",14],["fx-double",15]];
+function shake() { const w = document.querySelector(".wrap"); w.classList.remove("shake"); void w.offsetWidth; w.classList.add("shake"); }
+// Cheap repeatable noise so labels change every couple of seconds, not every frame.
+function noise(i) { const x = Math.sin((Math.floor(Date.now() / 1800) + 1) * (i + 3) * 12.9898) * 43758.5453; return x - Math.floor(x); }
+function renderEffects() {
+  const root = document.documentElement, chaos = Math.min(S.tier - 1, 10);
+  root.style.setProperty("--chaos", chaos);
+  FX.forEach(([cls, from]) => root.classList.toggle(cls, S.tier >= from));
+  $("sign").textContent = SIGNS[Math.min(S.tier - 1, SIGNS.length - 1)];
+  const paused = !S.running || !!dialog || !!S.over;   // paused game = frozen effects
+  root.classList.toggle("paused", paused);
+  if (paused) return;
+  S.units.forEach((u, i) => {
+    const scrambled = S.tier >= 5 && noise(i) < (S.tier - 4) * 0.12;
+    grid.children[i].querySelector(".unit-no").textContent = "Unit " + (scrambled ? GLYPHS[Math.floor(noise(i + 50) * GLYPHS.length)] : i + 1);
+    grid.children[i].classList.toggle("flipped", S.tier >= 12 && noise(i + 200) < Math.min(0.4, (S.tier - 11) * 0.08));   // some units turn upside down
+  });
+}
+/* ============ Pixel art: each unit is a 64x44 top-down room drawn on its own canvas ============
+   Sprites are rows of characters; each character is one pixel, looked up in PAL ("." = see-through). */
+const ROOM_W = 64, ROOM_H = 44;
+const PAL = {k:"#1b1b22",w:"#f4f4f0",g:"#8a8f98",G:"#555a63",r:"#d0433b",o:"#e08a2c",y:"#f2c641",Y:"#c9951c",n:"#3fa34d",N:"#2a6e36",
+             b:"#3b7dd8",B:"#254e9a",p:"#9a55d6",P:"#5e2f8f",t:"#8a5a2b",T:"#5c3a1a",c:"#7fd6e8",s:"#f0c9a0",m:"#e56fa8"};
+const SPRITES = {
+  person:  ["..hhh..",".hhhhh.",".hsssh.",".sksks.","..sss..",".uuuuu.","suuuuus",".uuuuu."],
+  legsA:   [".l...l."], legsB: ["..l.l.."],
+  toolbox: ["..GGGG..",".G....G.","rrrrrrrr","rrryyrrr","rrrrrrrr","TTTTTTTT"],
+  puddle:  ["..ccccc..",".cbbbbbc.","cbbcbbbbc",".cbbbbbc.","..ccccc.."],
+  bowling: [".kkkk.","kkwkwk","kkkwkk","kkkkkk","kkkkkk",".kkkk."],
+  fishbowl:["..ccc..",".c...c.","c.....c","cboobbc","cbbbbbc",".cbbbc.","..ccc.."],
+  fan:     ["..ggg..",".gcgcg.","ggckcgg",".gcgcg.","..ggg..","...G...","...G...",".GGGGG."],
+  cactus:  ["...n...",".n.n...",".n.n.n.",".nnn.n.","...nnn.","...n...",".ooooo.","..ooo.."],
+  cone:    ["..o..","..o..",".www.",".ooo.","ooooo","kkkkk"],
+  canoe:   ["..tttttttttt..",".tTTTTTTTTTTt.","tTTyyTTTTyyTTt",".tTTTTTTTTTTt.","..tttttttttt.."],
+  candles: [".y..y..y.",".o..o..o.",".w..w..w.",".w..w..w.",".w..w..w.","ggggggggg"],
+  ghost:   ["..www..",".wwwww.","wwkwkww","wwwwwww","wwwkwww","wwwwwww","wwwwwww","w.w.w.w"],
+  cheese:  ["..yyy..",".yyyyy.","yyYyyyy","yyyyYyy","YYYYYYY",".YYYYY."],
+  pennies: ["...oo...","..oToo..",".ooooTo.","oToooooo","TTTTTTTT"],
+  corn:    [".y..y.",".y..y.","nynnyn",".n..n.","nn.nn.",".n..nn",".n..n.",".n..n.","tttttt"],
+  raccoon: ["g.....g","ggggggg","gkwgwkg","ggwkwgg",".ggggg.",".GkGkG."],
+  trash:   [".gggg.","gggggg",".GgGg.",".GgGg.",".GgGg.",".GgGg.",".gggg."],
+  eye:     ["ggggggggg","gwwwwwwwg","gwwbbbwwg","gwwbkbwwg","gwwwwwwwg","g.g.g.g.g"],
+  cultist: ["..PPP..",".PPPPP.",".PkkkP.",".PPPPP.","PPPPPPP","PPPyPPP","PPPPPPP",".PPPPP."],
+  grave:   [".ggggg.","ggggggg","ggkkkgg","ggggggg","ggkgkgg","ggggggg","nnnnnnn",".n.n.n."],
+  portrait:["YYYYYYY","YsssssY","YsksksY","YsssssY","YsrrrsY","YbbbbbY","YYYYYYY"],
+  clock:   [".ggggg.","gwwwwwg","gwwwwwg","gwwkwwg","gwwwwwg","gwwwwwg",".ggggg."],
+  alien:   [".nnnnn.","nnnnnnn","nkknkkn","nkknkkn",".nnnnn.","..ggg..",".ggggg.",".g...g."],
+  pizza:   [".ooooo.","oyyryyo","oyryyyo","oyyyryo","oyryyyo","oyyyryo",".ooooo."],
+  squirrel:["....tt.","t..tttt","tt.tktt",".tttttt","..ttt..","..t.t.."],
+  scorch:  ["..kk.kk..",".kkkkkkk.","kkGkkGkkk",".kkkkkkk.","..kGkkk..","...kk...."],
+  cash:    ["nnnnnnn","nNnynNn","nnyyynn","nNnynNn","nnnnnnn"],
+  paper:   ["wwwww.","wkkkww","wwwwww","wkkkkw","wwwwww","wkkkww","wwwwww"],
+  food:    ["oyo","yry","oyo"],
+  book:    ["bbbb","bwwb","bbbb"],
+  bubble:  ["wwwww","wkwkw","wwwww",".w..."],
+  thought: [".www.","wwwww",".www.","...w."],
+  note:    ["..kk","..k.",".kk.","kk.."],
+  sign:    ["wwwww","wrrrw","wwwww","..t..","..t.."],
+  drum:    [".rrrrr.","rwwwwwr","rrrrrrr",".k...k."],
+  candle1: ["y","w","w"],
+  body:    ["..www..","w.ggg.w","wgsssgw","wguuugw","wguuugw","w.l.l.w","..www.."],
+  fly:     ["k"],
+  rat:     ["....gg.","mggggkg",".ggggg.","..g.g.."],
+  tooth:   ["w.w","www","www",".w."],
+  box:     ["TttttT","tttttt","tTTTTt","tttttt","tttttt"],
+  bang:    ["wwwww","wwrww","wwrww","wwwww","wwrww","wwwww"],
+  angry:   ["r.r",".r.","r.r"], heart: ["m.m","mmm",".m."], zed: ["kkk",".k.","kkk"],
+};
+// Things that walk or float around. Anything else in a unit's props sits in a fixed slot.
+const MOVERS = {ghost:4, raccoon:12, alien:6, clone:7, squirrel:20, rat:16};
+const SLOTS = [[19,7],[31,7],[52,22],[4,30],[40,31],[22,31],[53,33],[30,19]];
+const FLOORS = [["#b98a55","#a47744"],["#6f8f7a","#64836f"],["#d8d2c4","#c4bdae"]];
+const WALLPAPER = ["#c9706a","#6a8fc9","#c9b36a","#7fb08a","#a07fc0"];
+
+function spr(ctx, rows, x, y, pal, flip) {
+  x = Math.round(x); y = Math.round(y);
+  for (let r = 0; r < rows.length; r++) for (let c = 0; c < rows[r].length; c++) {
+    const ch = rows[r][flip ? rows[r].length - 1 - c : c];
+    if (ch === ".") continue;
+    ctx.fillStyle = (pal && pal[ch]) || PAL[ch];
+    ctx.fillRect(x + c, y + r, 1, 1);
+  }
+}
+function hash(str) { let h = 7; for (const ch of str) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h; }
+// A tenant's colours come from their name, so the same tenant always looks the same.
+function lookFor(name) {
+  const h = hash(name), odd = /Zzzk|Zorp|Something|Thing|Static|Situation|LANDLORD|Later|Probably|Star|Comet|Nebula|Moon|Orbit|Cosmic|Matter|Hole|Echo|Colour|Air|Concept|Universe|Building|Zero|∞/.test(name);
+  return {h: ["#1b1b22","#5c3a1a","#f2c641","#e08a2c","#8a8f98","#d0433b"][h % 6],
+          u: ["#d0433b","#3b7dd8","#3fa34d","#9a55d6","#e08a2c","#2bb3a3","#e56fa8"][(h >> 3) % 7],
+          s: odd ? ["#7fd98a","#b99cf0","#7fd6e8"][(h >> 6) % 3] : ["#f0c9a0","#c68e5e","#8d5a3a"][(h >> 6) % 3],
+          l: "#254e9a", rug: ["#b5485d","#3f6fb0","#c08a2e","#4d9a6a"][(h >> 9) % 4]};
+}
+function addProp(unit, prop) {
+  unit.props = unit.props || [];
+  unit.props.push(prop);   // no limit: rooms just keep filling up
+}
+
+// Where everyone is standing. View-only, so it lives outside S and is never saved.
+const stages = new WeakMap();
+let animT = 0;
+function newActor() { return {x: rand(8, 50), y: rand(10, 30), tx: 30, ty: 20, wait: rand(0, 2), flip: false, step: 0, sleep: false}; }
+// chooser (optional) plans the next stop: where to go, what to do there and for how long.
+function moveActor(a, dt, speed, chooser) {
+  if (a.wait > 0) { a.wait -= dt; if (a.wait <= 0) a.doing = null; return false; }
+  const dx = a.tx - a.x, dy = a.ty - a.y, dist = Math.hypot(dx, dy), go = speed * dt;
+  if (dist <= go) {
+    a.x = a.tx; a.y = a.ty; a.doing = a.next || null; a.wait = a.nextTime !== undefined ? a.nextTime : rand(0.5, 3);
+    const plan = chooser ? chooser() : null;
+    if (plan) { a.tx = plan.x; a.ty = plan.y; a.next = plan.act; a.nextTime = plan.time; }
+    else { a.tx = rand(3, 53); a.ty = rand(8, 32); a.next = null; a.nextTime = undefined; }
+    return false;
+  }
+  a.doing = null;
+  a.x += dx / dist * go; a.y += dy / dist * go; a.step += go; a.flip = dx < 0;
+  return true;
+}
+function drawPerson(ctx, a, look, walking, lift = 0, flip = a.flip) {
+  spr(ctx, SPRITES.person, a.x, a.y - lift, look, flip);
+  spr(ctx, walking && Math.floor(a.step / 3) % 2 ? SPRITES.legsB : SPRITES.legsA, a.x, a.y + 8 - lift, look);
+}
+function drawRoom(ctx, u, index, dt, moving) {
+  const t = u.tenant, props = u.props || [], px = (c, x, y, w, h) => { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); };
+  let st = stages.get(u);
+  if (!st) stages.set(u, st = {tenant: newActor(), movers: []});
+
+  // Floor, walls, window, door
+  const [f1, f2] = FLOORS[index % FLOORS.length];
+  px(f1, 0, 0, ROOM_W, ROOM_H);
+  if (index % 3 === 2) { for (let y = 5; y < ROOM_H; y += 4) for (let x = (y % 8 ? 0 : 4); x < ROOM_W; x += 8) px(f2, x, y, 4, 4); }
+  else for (let y = 9; y < ROOM_H; y += 5) { px(f2, 0, y, ROOM_W, 1); for (let x = (y % 2 ? 7 : 19); x < ROOM_W; x += 24) px(f2, x, y - 4, 1, 4); }
+  px(WALLPAPER[index % WALLPAPER.length], 0, 0, ROOM_W, 5); px("#3a2a2a", 0, 4, ROOM_W, 1);
+  px("#3a2a2a", 0, 0, 1, ROOM_H); px("#3a2a2a", ROOM_W - 1, 0, 1, ROOM_H); px("#3a2a2a", 0, ROOM_H - 1, ROOM_W, 1);
+  px("#f4f4f0", 25, 0, 14, 4); px(t ? "#7fd6e8" : "#33424f", 26, 1, 12, 2); px("#f4f4f0", 31, 1, 1, 2);
+  px("#e7d9b8", 28, ROOM_H - 1, 8, 1);
+
+  // Furniture: rug, bed, side table with a lamp
+  const look = t ? lookFor(t.name) : null;
+  if (look) { px(look.rug, 22, 17, 18, 11); px("rgba(255,255,255,.35)", 24, 19, 14, 7); px(look.rug, 25, 20, 12, 5); }
+  px("#5c3a1a", 3, 7, 12, 15); px("#f4f4f0", 4, 8, 10, 3);
+  px(look ? look.u : "#c9c9c4", 4, 11, 10, 10); if (look) px("rgba(0,0,0,.2)", 4, 14, 10, 2);
+  px("#8a5a2b", 47, 8, 9, 5); px("#5c3a1a", 47, 13, 9, 1); px(t ? "#f2c641" : "#8a8f98", 50, 9, 3, 2);
+
+  // What your decisions left behind
+  const drawables = [];
+  let slot = 0, moverCount = 0;
+  props.forEach((p, k) => {
+    if (p === "vibes") return;
+    if (MOVERS[p]) {
+      const a = st.movers[moverCount] || (st.movers[moverCount] = newActor()); moverCount++;
+      const walking = moving && moveActor(a, dt, MOVERS[p], false);
+      drawables.push({y: a.y, draw: () => {
+        if (p === "clone") drawPerson(ctx, a, look || lookFor("clone"), walking);
+        else if (p === "ghost") { ctx.globalAlpha = 0.75; spr(ctx, SPRITES.ghost, a.x, a.y + Math.sin(animT * 2 + k) * 1.5, null, a.flip); ctx.globalAlpha = 1; }
+        else spr(ctx, SPRITES[p], a.x, a.y, null, a.flip);
+      }});
+      return;
+    }
+    // The first few props get tidy spots; after that they pile up wherever there's floor.
+    const n = slot++, h = hash("slot" + n + "u" + index);
+    const [sx, sy] = n < SLOTS.length ? SLOTS[n] : [3 + h % 52, 7 + (h >> 8) % 28];
+    if (p === "portal") {
+      const cols = ["#5e2f8f","#9a55d6","#7fd6e8","#f4f4f0"], spin = Math.floor(animT * 4);
+      for (let ring = 0; ring < 4; ring++) px(cols[(ring + spin) % 4], sx + ring, sy + ring, 8 - ring * 2, 8 - ring * 2);
+      return;
+    }
+    const rows = SPRITES[p]; if (!rows) return;
+    const x = Math.min(sx, ROOM_W - 1 - rows[0].length);
+    spr(ctx, rows, x, sy);
+    if (p === "clock") { const d = [[0,-2],[1,-1],[2,0],[1,1],[0,2],[-1,1],[-2,0],[-1,-1]][((-Math.floor(animT * 3)) % 8 + 8) % 8]; px("#d0433b", x + 3 + d[0], sy + 3 + d[1], 1, 1); }   // runs backwards
+    if (p === "candles" && Math.floor(animT * 6) % 2) { px("#f4f4f0", x + 1, sy, 1, 1); px("#f4f4f0", x + 7, sy, 1, 1); }
+    if (p === "portrait" && Math.floor(animT) % 4 === 0) { px("#f0c9a0", x + 2, sy + 2, 1, 1); px("#f0c9a0", x + 4, sy + 2, 1, 1); }   // it blinks
+  });
+
+  // The tenant: wanders, naps, paces when something is wrong
+  if (t) {
+    const a = st.tenant, upset = !!t.issue;
+    const walking = moving && moveActor(a, dt, upset ? 16 : t.event ? (t.event.kind === "sports" ? 26 : 11) : 7, () => planActivity(t));
+    if (upset && a.wait > 0.4) a.wait = 0.4;
+    const d = a.doing, beat = Math.floor(animT * 4);
+    drawables.push({y: a.y, draw: () => {
+      const lift = d === "levitate" ? 3 + Math.round(Math.sin(animT * 3)) : d === "exercise" || d === "dance" ? beat % 2 : 0;
+      if (d === "levitate") px("rgba(0,0,0,.25)", a.x + 1, a.y + 9, 5, 1);
+      drawPerson(ctx, a, look, walking, lift, d === "dance" ? beat % 2 === 0 : a.flip);
+      const x = a.x, y = a.y - lift;
+      if (upset) spr(ctx, SPRITES.bang, x + 1, y - 7 - (Math.floor(animT * 3) % 2));
+      else if (d === "nap") spr(ctx, SPRITES.zed, x + 7, y - 4 - (Math.floor(animT * 2) % 3));
+      else if (d === "eat") { spr(ctx, SPRITES.food, x + 5, y + 4); if (beat % 2) px("#1b1b22", x + 3, y + 4, 1, 1); }
+      else if (d === "read") spr(ctx, SPRITES.book, x + 2, y + 5);
+      else if (d === "phone" || d === "stare") spr(ctx, SPRITES.bubble, x + 5, y - 6);
+      else if (d === "window") spr(ctx, SPRITES.thought, x + 5, y - 6);
+      else if (d === "dance") spr(ctx, SPRITES.note, x + (beat % 2 ? -4 : 8), y - 3 - (beat % 3));
+      else if (d === "picket") spr(ctx, SPRITES.sign, x + 1, y - 7);
+      else if (d === "cook") { px("#555a63", x + 6, y + 5, 4, 2); if (beat % 2) { px("#e08a2c", x + 7, y + 4, 1, 1); px("#f2c641", x + 8, y + 3, 1, 1); } px("rgba(200,200,200,.6)", x + 7 + (beat % 2), y - 2 - (beat % 3), 1, 2); }
+      else if (d === "skate" || (t.event && t.event.kind === "sports")) { px("#d0433b", x, y + 9, 7, 1); px("#1b1b22", x + 1, y + 10, 1, 1); px("#1b1b22", x + 5, y + 10, 1, 1); }
+      else if (d === "build" && beat % 2) { px("#f2c641", x + 7, y + 4, 1, 1); px("#f4f4f0", x + 8, y + 3, 1, 1); px("#e08a2c", x + 9, y + 5, 1, 1); }
+      else if (t.mood < 30) spr(ctx, SPRITES.angry, x + 6, y - 3);
+      else if (t.mood >= 85 && !walking) spr(ctx, SPRITES.heart, x + 2, y - 4);
+    }});
+    const ev = t.event && t.event.kind;
+    if (ev === "party" || ev === "talent" || ev === "band") {   // guests (or an audience) pile in
+      st.guests = st.guests || [];
+      for (let g = 0; g < (ev === "party" ? 5 : ev === "talent" ? 3 : 2); g++) {
+        const ga = st.guests[g] || (st.guests[g] = newActor()), gw = moving && moveActor(ga, dt, 13, () => ({x: rand(8, 50), y: rand(10, 30), act:"dance", time:1.5}));
+        drawables.push({y: ga.y, draw: () => drawPerson(ctx, ga, lookFor("guest" + g + "u" + index), gw, ga.doing ? beat % 2 : 0, ga.doing ? (beat + g) % 2 === 0 : ga.flip)});
+      }
+    }
+  }
+  drawables.sort((p, q) => p.y - q.y).forEach(d => d.draw());
+
+  const tev = t && t.event && t.event.kind;
+  if (tev === "party") { const c = ["rgba(229,111,168,.22)","rgba(127,214,232,.2)","rgba(242,198,65,.2)","rgba(154,85,214,.22)"][Math.floor(animT * 5) % 4]; px(c, 0, 5, ROOM_W, ROOM_H - 5); }
+  if (tev === "band") { spr(ctx, SPRITES.drum, 46, 26); if (Math.floor(animT * 6) % 2) px("rgba(255,255,255,.08)", 0, 0, ROOM_W, ROOM_H); }
+  if (tev === "talent") { ctx.fillStyle = "rgba(255,240,180,.22)"; ctx.beginPath(); ctx.moveTo(30, 0); ctx.lineTo(34, 0); ctx.lineTo(44, ROOM_H); ctx.lineTo(20, ROOM_H); ctx.fill(); }
+  if (tev === "ritual") {
+    px("rgba(94,47,143,.2)", 0, 5, ROOM_W, ROOM_H - 5);
+    for (let c = 0; c < 8; c++) { const ang = c / 8 * Math.PI * 2 + animT * 0.5; spr(ctx, SPRITES.candle1, 31 + Math.cos(ang) * 13, 21 + Math.sin(ang) * 8); }
+  }
+  if (tev === "strike") spr(ctx, SPRITES.sign, 50, 30);
+  if (tev === "weather") { px("rgba(59,125,216,.18)", 0, 5, ROOM_W, ROOM_H - 5); for (let r = 0; r < 18; r++) { const n = hash("rain" + r + index); px("#7fd6e8", n % 62, 5 + ((n >> 6) + Math.floor(animT * 30)) % 36, 1, 2); } }
+  if (tev === "lab" && Math.floor(animT * 3) % 2) px("rgba(63,163,77,.22)", 0, 5, ROOM_W, ROOM_H - 5);
+  if (tev === "cooking") for (let k = 0; k < 4; k++) px("rgba(160,160,160,.5)", 44 + k * 2, 6 - ((Math.floor(animT * 4) + k) % 4), 1, 2);
+  if (tev === "sale") for (let k = 0; k < 5; k++) { const n = hash("sale" + k + index); px(["#9a55d6","#7fd6e8","#f2c641"][k % 3], 6 + n % 50, 30 + (n >> 5) % 8, 3, 2); }
+  if (props.includes("vibes")) {   // immaculate
+    const cols = ["#e56fa8","#7fd6e8","#f2c641","#f4f4f0"];
+    for (let k = 0; k < 14; k++) {
+      const n = hash("v" + k + index), on = Math.floor(animT * 3 + k) % 3;
+      if (on) px(cols[k % 4], 2 + n % 60, 6 + (n >> 7) % 36, on, on);
+    }
+  }
+  if (moving && S.tier >= 8 && Math.random() < Math.min(0.5, (S.tier - 7) * 0.03)) {   // late tiers: the picture tears
+    const y = Math.floor(rand(5, ROOM_H - 6));
+    ctx.drawImage(ctx.canvas, 0, y, ROOM_W, 4, Math.round(rand(-7, 7)), y, ROOM_W, 4);
+  }
+  if (t && t.possessed) { px("rgba(94,47,143,.28)", 0, 0, ROOM_W, ROOM_H); if (Math.floor(animT * 4) % 2) px("rgba(154,85,214,.25)", 0, 0, ROOM_W, ROOM_H); }
+  if (u.fire > 0) {   // flames, more of them as it grows
+    px(`rgba(224,138,44,${Math.min(0.45, u.fire / 220)})`, 0, 0, ROOM_W, ROOM_H);
+    const flick = Math.floor(animT * 8), cols = ["#d0433b","#e08a2c","#f2c641"];
+    for (let k = 0; k < 6 + u.fire / 4; k++) {
+      const n = hash("f" + k + "u" + index + "t" + (flick + k) % 5);
+      const x = 2 + n % 58, y = 6 + (n >> 6) % 34, hgt = 2 + (n >> 12) % 4;
+      px(cols[k % 3], x, y, 2, hgt); px("#f2c641", x, y + hgt - 1, 1, 1);
+    }
+  }
+  if (u.body > 0) {   // chalk outline, a still figure, flies
+    px("rgba(12,18,28,.5)", 0, 0, ROOM_W, ROOM_H);
+    spr(ctx, SPRITES.body, 27, 20, {s:"#9aa3a8", u:"#555a63", l:"#3a3a40"});
+    for (let f = 0; f < 4; f++) spr(ctx, SPRITES.fly, 30 + Math.round(Math.sin(animT * 5 + f * 2) * 6), 21 + Math.round(Math.cos(animT * 4 + f) * 4));
+  }
+  if (u.ruin > 0) {   // a burnt-out shell until it's rebuilt
+    px("rgba(20,20,22,.78)", 0, 0, ROOM_W, ROOM_H);
+    for (let k = 0; k < 26; k++) { const n = hash("r" + k + "u" + index); px(["#555a63","#3a3a40","#8a8f98","#1b1b22"][k % 4], 2 + n % 58, 6 + (n >> 6) % 34, 2 + (n >> 11) % 4, 2 + (n >> 14) % 3); }
+    return;
+  }
+  if (!t) {   // lights off; boxes by the door once applicants are waiting
+    px("rgba(12,18,28,.62)", 0, 0, ROOM_W, ROOM_H);
+    if (u.candidates) { spr(ctx, SPRITES.box, 20, 36); spr(ctx, SPRITES.box, 38, 35); spr(ctx, SPRITES.box, 40, 30); }
+  }
+}
+// Tier 10+: things fall past the whole screen. More of them every tier.
+const drops = [];
+function drawRain(dt, moving) {
+  const c = $("rain"), want = stillLife ? 0 : Math.min(70, Math.max(0, S.tier - 9) * 8);
+  c.hidden = !want;
+  if (!want) { drops.length = 0; return; }
+  const w = Math.ceil(innerWidth / 3), h = Math.ceil(innerHeight / 3);
+  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+  while (drops.length < want) drops.push({x: rand(0, w), y: rand(-h, 0), v: rand(20, 60), kind: pick(["tooth","pennies","pizza","cash","tooth"])});
+  drops.length = want;
+  const ctx = c.getContext("2d"); ctx.clearRect(0, 0, w, h);
+  for (const d of drops) {
+    if (moving) d.y += d.v * dt;
+    if (d.y > h) { d.y = -8; d.x = rand(0, w); }
+    spr(ctx, SPRITES[d.kind], d.x, d.y);
+  }
+}
+const stillLife = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+function drawRooms(dt) {
+  const moving = S.running && !dialog && !S.over && !stillLife;
+  if (moving) animT += dt;
+  S.units.forEach((u, i) => {
+    const canvas = grid.children[i] && grid.children[i].querySelector("canvas");
+    if (canvas) try { drawRoom(canvas.getContext("2d"), u, i, dt, moving); } catch (e) { console.error(e); }   // a drawing bug only blanks one room
+  });
+}
+
+/* ============ Minigames: from tier 3, a timed interruption. Win for a bonus, lose for a penalty. ============ */
+const MINI_FROM_TIER = 3;
+const miniEvery = tier => Math.max(20, 75 - (tier - MINI_FROM_TIER) * 10);   // seconds between minigames
+const MINIS = {
+  catch: {title:"Catch the raccoon", text:"It has your master key. Click it 4 times."},
+  mash:  {title:"Sign the paperwork", text:"The city wants signatures. Keep stamping."},
+  odd:   {title:"Spot the impostor", text:"One of these is not who they say they are."},
+};
+const LOOKALIKES = [["Gary","Gray"],["Mildred","Mildrde"],["Chad","Chud"],["Kevin","Kevni"],["Doreen","Doreeen"]];
+let mini = null;
+function startMini() {
+  const type = pick(Object.keys(MINIS)), squeeze = Math.max(0.5, 1 - (S.tier - MINI_FROM_TIER) * 0.07);   // less time each tier
+  mini = {type, time:0, limit: 3 + 6 * squeeze, got:0, need: type === "catch" ? 4 : type === "mash" ? 12 + S.tier : 1, hop:0};
+  openDialog("mini"); sfx("issue");
+}
+function hopTarget() {
+  const b = $("mini").querySelector(".target"); if (!b) return;
+  b.style.left = rand(2, 78) + "%"; b.style.top = rand(4, 66) + "%"; mini.hop = 0;
+}
+function buildMini() {
+  const box = $("mini"), m = mini;
+  box.innerHTML = `<div class="bar"><i id="miniBar"></i></div>`;
+  if (m.type === "catch") {
+    const arena = document.createElement("div"); arena.className = "arena";
+    arena.innerHTML = `<button class="target" aria-label="Raccoon"><canvas width="7" height="6"></canvas></button>`;
+    spr(arena.querySelector("canvas").getContext("2d"), SPRITES.raccoon, 0, 0);
+    arena.querySelector("button").addEventListener("click", () => { if (++m.got >= m.need) endMini(true); else hopTarget(); });
+    box.appendChild(arena); hopTarget();
+  } else if (m.type === "mash") {
+    const b = document.createElement("button"); b.className = "mash"; b.textContent = `Stamp (0/${m.need})`;
+    b.addEventListener("click", () => { b.textContent = `Stamp (${++m.got}/${m.need})`; if (m.got >= m.need) endMini(true); });
+    box.appendChild(b);
+  } else {
+    const [real, fake] = pick(LOOKALIKES), wrong = Math.floor(Math.random() * 9), g = document.createElement("div");
+    g.className = "mini-grid";
+    for (let k = 0; k < 9; k++) {
+      const b = document.createElement("button"); b.textContent = k === wrong ? fake : real;
+      b.addEventListener("click", () => endMini(k === wrong));
+      g.appendChild(b);
+    }
+    box.appendChild(g);
+  }
+}
+function miniTick(dt) {
+  if (!mini) return;
+  mini.time += dt; mini.hop += dt;
+  const bar = $("miniBar"); if (bar) { bar.style.transition = "none"; bar.style.width = Math.max(0, 100 - mini.time / mini.limit * 100) + "%"; }
+  if (mini.type === "catch" && mini.hop > Math.max(0.4, 0.9 - S.tier * 0.04)) hopTarget();
+  if (mini.time >= mini.limit) endMini(false);
+}
+function endMini(won) {
+  const info = MINIS[mini.type]; mini = null; closeDialog();
+  const out = applyEffects(won ? {sanity:8, coins:30 * S.tier} : {sanity:-8, allMood:-4});
+  notify({title: won ? "Minigame won" : "Minigame lost", desc: info.title, outcome: out.join(", "), sev: won ? "good" : "bad", ttl:5});
+  say(`${info.title}: ${won ? "won" : "lost"} (${out.join(", ")}).`); sfx(won ? "good" : "bad");
+  render();
+}
+
+function buildGrid() {
+  grid.innerHTML = "";
+  S.units.forEach((u, i) => {
+    const el = document.createElement("div");
+    el.className = "unit";
+    el.innerHTML = `<button class="unit-main" id="unit-${i}">
+        <canvas class="room" width="${ROOM_W}" height="${ROOM_H}" aria-hidden="true"></canvas>
+        <span class="unit-no">Unit ${i + 1}</span><span class="unit-name"></span>
+        <span class="unit-rent"></span><span class="unit-status"></span>
+        <span class="mood"><i></i></span></button>
+      <span class="flag" hidden></span>
+      <button class="evict" id="evict-${i}" hidden>Evict (+${EVICT_SANITY} sanity)</button>`;
+    el.querySelector(".unit-main").addEventListener("click", () => {
+      const unit = S.units[i];
+      if (unit.tenant && unit.tenant.issue) openDialog("issue", i);
+      else if (!unit.tenant && unit.candidates) { moveIn(i, Math.floor(Math.random() * unit.candidates.length)); render(); }   // no picker: whoever's next moves in
+    });
+    el.querySelector(".evict").addEventListener("click", e => {
+      const a = e.currentTarget.dataset.action;
+      if (a === "fire") extinguish(i); else if (a === "ghost") exorcise(i); else if (a === "tevent") stopTenantEvent(i); else if (a === "body") removeBody(i); else if (a === "evict") evict(i);
+      render();
+    });
+    grid.appendChild(el);
+  });
+}
+function renderNotes() {
+  const box = $("notes"), have = new Map([...box.children].map(el => [+el.dataset.id, el]));
+  for (const n of S.notes) {
+    let el = have.get(n.id);
+    if (!el) {   // only new notes get created, so each one animates in once
+      el = document.createElement("div"); el.dataset.id = n.id;
+      el.innerHTML = `<b></b><span></span><small></small><button class="x" aria-label="Dismiss">×</button>`;
+      el.querySelector(".x").addEventListener("click", () => { S.notes = S.notes.filter(x => x.id !== n.id); renderNotes(); });
+      box.appendChild(el);
+    }
+    el.className = "note " + n.sev;
+    el.children[0].textContent = n.title; el.children[1].textContent = n.desc; el.children[2].textContent = n.outcome;
+    have.delete(n.id);
+  }
+  have.forEach(el => el.remove());
+}
+let lastLogHtml = null, lastWallet = null, lastStaffIds = null;
+function renderStaff() {
+  $("staff").hidden = !S.staff.length;
+  const ids = S.staff.map(e => e.id).join();
+  if (ids !== lastStaffIds) {   // rebuild only when someone is hired or leaves, so the Fire buttons stay clickable
+    lastStaffIds = ids;
+    $("staffList").innerHTML = S.staff.map(e => `<div class="emp" data-id="${e.id}"><b></b><button data-fire="${e.id}">Fire</button><span class="meta"></span><span class="doing"></span></div>`).join("");
+  }
+  S.staff.forEach((e, k) => {
+    const row = $("staffList").children[k]; if (!row) return;
+    const T = STAFF_TYPES[e.type];
+    row.children[0].textContent = e.name;
+    row.children[2].textContent = `${T.name} · ${staffSalary(e).toFixed(1)} ${e.cur}/s`;
+    const unit = e.task ? e.task.unit + 1 : 0;
+    let doing = e.strike > 0 ? `On strike · ${Math.ceil(e.strike)}s` : e.leave > 0 ? `On leave · ${Math.ceil(e.leave)}s` : e.cult > 0 ? `Leading a cult · fire them within ${Math.ceil(e.cult)}s` :
+      e.unpaid > 0 ? `Not being paid · quits in ${Math.ceil(15 - e.unpaid)}s` : e.task ? `Handling unit ${unit} · ${Math.ceil(e.task.left)}s` : "Waiting for issues";
+    if (e.scheme && !e.task && noise(k + 300) < 0.4) doing = "Having a quiet word with a tenant";   // a tell, if you're watching
+    row.children[3].textContent = doing;
+    row.children[3].classList.toggle("alert", e.cult > 0 || e.strike > 0 || e.unpaid > 0);
+  });
+}
+function render() {
+  if (grid.children.length !== S.units.length) buildGrid();
+  document.documentElement.dataset.tier = contentTier();
+  renderEffects();
+  $("tierName").textContent = `Tier ${S.tier} · ${tierName(S.tier)}`;
+  $("tierClock").textContent = S.over ? "run over" : `next tier in ${Math.ceil(TIER_SECONDS - S.tTier)}s`;
+  $("sanityNum").textContent = `${Math.ceil(S.sanity)} · −${sanityDrain(S.tier).toFixed(2)}/s`;
+  const sb = $("sanityBar");
+  sb.style.width = S.sanity + "%";
+  sb.style.backgroundColor = S.sanity > 50 ? "var(--offer)" : S.sanity > 20 ? "var(--warn)" : "var(--accent)";
+  $("till").textContent = tillText();
+  const wal = ["Coins", ...Object.keys(S.till).filter(c => c !== "Coins" && S.till[c] > 0).sort()]
+    .map(c => `<span class="${c === "Coins" && !(S.till.Coins > 0) ? "broke" : ""}"><b>${Math.floor(S.till[c] || 0).toLocaleString()}</b> ${c}</span>`).join("");
+  if (wal !== lastWallet) { $("wallet").innerHTML = wal; lastWallet = wal; }
+  const fill = (id, v) => { const b = $(id); b.style.width = clamp(v, 0, 100) + "%"; b.style.backgroundColor = v > 50 ? "var(--good)" : v > 25 ? "var(--warn)" : "var(--bad)"; };
+  $("mOrder").hidden = S.tier < BARS.order.tier; $("mBoiler").hidden = S.tier < BARS.boiler.tier; $("mRep").hidden = S.tier < BARS.rep.tier;
+  fill("orderBar", S.order); fill("boilerBar", S.boiler); fill("repBar", S.rep);
+  const backlog = openIssueCount() - REP.issueAllowance;
+  $("repNum").textContent = backlog > 0 ? `${backlog + REP.issueAllowance} open issues hurting it` : repSlowdown() > 1.05 ? `applicants ${repSlowdown().toFixed(1)}x slower` : "applicants arrive on time";
+  $("mExp").hidden = S.tier < BARS.expenses.tier; $("mCaps").hidden = S.tier < BARS.caps.tier;
+  if (S.tier >= BARS.expenses.tier) {   // full bar = spending as fast as Coins come in
+    const rate = expenseRate(), income = incomeRate(), e = $("expBar");
+    e.style.width = Math.min(100, rate / Math.max(1, income) * 100) + "%";
+    e.style.backgroundColor = rate < income * 0.5 ? "var(--good)" : rate < income ? "var(--warn)" : "var(--bad)";
+    $("expNum").textContent = S.broke > 0 ? `BROKE · bankrupt in ${Math.ceil(BROKE_GRACE - S.broke)}s` : `−${rate.toFixed(1)}/s · rent ${income.toFixed(1)}/s`;
+  }
+  if (S.tier >= BARS.caps.tier) { fill("capsBar", (S.till.BottleCaps || 0) / CAPS_FULL * 100); $("buyCaps").textContent = `Buy ${CAPS_CRATE} (${capsPrice()} Coins)`; $("buyCaps").disabled = (S.till.Coins || 0) < capsPrice(); }
+  const burning = S.units.map((u, k) => u.fire > 0 ? k + 1 : 0).filter(Boolean), haunted = S.units.filter(u => u.tenant && u.tenant.possessed);
+  $("cFire").hidden = !burning.length; $("cFireText").textContent = `units ${burning.join(", ")} · damages so far ${Math.round(S.damages)} Coins · use Extinguish on the burning cards`;
+  $("cGhost").hidden = !haunted.length; $("cGhostText").textContent = haunted.map(u => u.tenant.name).join(", ") + " · exorcise from their card";
+  for (const [kind, box, text, btn] of [["aliens","cAliens","cAliensText","bribe"],["rats","cRats","cRatsText","exterminate"]]) {
+    const left = S.crises[kind] || 0; $(box).hidden = !(left > 0);
+    if (left > 0) { $(text).textContent = `${Math.ceil(left)}s left · moods dropping`; $(btn).textContent = `${CRISES[kind].fix} (${crisisCost(kind)} Coins)`; }
+  }
+  const dockH = document.querySelector(".dock").offsetHeight + 24;
+  if (document.body.style.paddingBottom !== dockH + "px") { document.body.style.paddingBottom = dockH + "px"; document.documentElement.style.setProperty("--dockH", (dockH - 24) + "px"); }   // keep the page scrollable past the dock
+  $("orderNum").textContent = `avg mood ${Math.round(averageMood())} · need ${ORDER_MOOD}`;
+  $("quick").hidden = !quick;
+  if (quick) {
+    $("quickText").textContent = QUICKS[quick.type].text + (quick.type === "key" ? ` ${quick.key}` : "");
+    $("quickBtn").textContent = quick.type === "key" ? quick.key : QUICKS[quick.type].button + (quick.type === "double" ? ` (${quick.got}/2)` : "");
+    $("quickBar").style.transition = "none"; $("quickBar").style.width = Math.max(0, 100 - quick.time / quick.limit * 100) + "%";
+  }
+  const cd = Math.ceil(S.shopCooldown);
+  $("shop").textContent = cd ? `Shop (${cd}s)` : "Shop";
+  $("shop").disabled = !S.running || !!S.over || cd > 0;
+  $("hireBtn").hidden = S.tier < STAFF_FROM_TIER; $("hireBtn").disabled = S.staff.length >= STAFF_MAX || !S.running || !!S.over;
+  $("hireBtn").textContent = S.staff.length >= STAFF_MAX ? "Staff full" : "Hire staff";
+  renderStaff();
+  renderNotes();
+  $("rentClock").textContent = S.over ? "" : `· next rent in ${Math.ceil(RENT_SECONDS - S.tRent)}s`;
+  $("sound").textContent = soundOn ? "Sound on" : "Sound off";
+  $("music").textContent = musicOn ? "Music on" : "Music off"; $("music").setAttribute("aria-pressed", musicOn);
+  $("sound").setAttribute("aria-pressed", soundOn);
+  $("pause").textContent = S.over ? "Try again" : S.running && dialog ? "Paused" : S.running ? "Pause" : (S.tTier || S.tier > 1 ? "Resume" : "Start");
+
+  S.units.forEach((u, i) => {
+    const el = grid.children[i], t = u.tenant, q = s => el.querySelector(s), act = q(".evict");
+    const tdef = t && t.event ? TENANT_EVENTS[t.event.kind] : null;
+    el.classList.toggle("tevent", !!tdef);
+    el.classList.toggle("burning", u.fire > 0); el.classList.toggle("ruined", u.ruin > 0); el.classList.toggle("possessed", !!(t && t.possessed));
+    const flag = q(".flag"), main = q(".unit-main");
+    el.classList.toggle("vacant", !t);
+    el.classList.toggle("has-issue", !!(t && t.issue));
+    q(".mood").hidden = !t;
+    // One action button per card, most urgent first: fire, possession, then eviction.
+    const action = u.fire > 0 ? "fire" : t && t.possessed ? "ghost" : u.body > 0 ? "body" : tdef && tdef.action ? "tevent" : t && t.behind ? "evict" : null;
+    act.hidden = !action; act.classList.toggle("hot", action === "fire" || action === "ghost");
+    act.dataset.action = action || "";
+    if (action === "fire") { act.textContent = S.extCd > 0 ? "Extinguisher refilling…" : "Extinguish"; act.disabled = S.extCd > 0; }
+    else if (action === "ghost") { act.textContent = `Exorcise & evict (${exorciseCost()} Coins)`; act.disabled = false; }
+    else if (action === "body") { act.textContent = `Remove the body (${bodyCost()} Coins)`; act.disabled = false; }
+    else if (action === "tevent") {
+      const c = eventActionCost(tdef), mood = tdef.action.mood ? Math.round(tdef.action.mood * IMPACT(S.tier)) : 0;
+      act.textContent = `${tdef.action.label}` + (c ? ` (${c} Coins)` : "") + (mood < 0 ? ` (mood ${mood})` : "");
+      act.disabled = c > (S.till.Coins || 0);
+    }
+    else if (action === "evict") { act.textContent = `Evict (+${EVICT_SANITY} sanity)`; act.disabled = false; }
+    if (t) {
+      q(".unit-name").textContent = t.name;
+      q(".unit-rent").textContent = `${t.rent} ${t.currency}` + (t.behind ? ` · ${{skipped:"skipped rent", late:"rent late", paid:"paid late"}[t.behind]}` : "");
+      q(".unit-rent").classList.toggle("due", !!t.behind);
+      q(".unit-status").textContent = u.fire > 0 ? `On fire · ${Math.round(u.fire)}%` : t.possessed ? "Possessed · attacking the building" : tdef ? `${tdef.name} · ${Math.ceil(t.event.left)}s` + (t.mood > 100 ? ` · mood ${Math.round(t.mood)}` : "") + (t.issue ? ` · ${t.issue.title}` : "") : t.issue ? t.issue.title + (t.issueAge > STALE_GRACE ? " (getting impatient)" : "") : "";
+      const bar = q(".mood i"); bar.style.width = Math.min(100, t.mood) + "%"; bar.style.backgroundColor = t.mood > 100 ? "var(--accent)" : moodColor(t.mood);   // past 100 = party overflow
+      flag.hidden = !t.issue; flag.className = "flag"; flag.textContent = t.stack ? `!${t.stack + 1}` : "!";
+      main.disabled = !t.issue;
+    } else {
+      q(".unit-name").textContent = u.ruin > 0 ? "Destroyed" : "Vacant";
+      q(".unit-rent").textContent = ""; q(".unit-rent").classList.remove("due");
+      q(".unit-status").textContent = u.ruin > 0 ? `Rebuilding · ${Math.ceil(u.ruin)}s` : u.fire > 0 ? `On fire · ${Math.round(u.fire)}%` : u.body > 0 ? `A body · coroner in ${Math.ceil(u.body)}s` : u.candidates ? "Applicant waiting · click to move them in" : u.wait > 0 ? `Applicants in ${Math.ceil(u.wait)}s` : "Coming soon…";
+      flag.hidden = false; flag.className = "flag " + (u.candidates ? "offer" : "wait"); flag.textContent = u.candidates ? "+" : "?";
+      main.disabled = !u.candidates;
+    }
+  });
+  const logHtml = S.log.map(l => `<li>${l.replace(/[<&]/g, c => c === "<" ? "&lt;" : "&amp;")}</li>`).join("");
+  if (logHtml !== lastLogHtml) { $("log").innerHTML = logHtml; lastLogHtml = logHtml; }   // only touch the page when it changed
+
+  // Close a dialog whose subject has gone away (tenant left, unit filled).
+  if (dialog && dialog.kind === "issue" && !(S.units[dialog.unit].tenant && S.units[dialog.unit].tenant.issue)) closeDialog();
+  if (dialog && dialog.kind === "apply" && !S.units[dialog.unit].candidates) closeDialog();
+}
+
+function tradeoffs(o) {
+  const up = [], down = [], put = (v, text) => (v > 0 ? up : down).push(text);
+  const s = o.s !== undefined ? o.s : -(o.m || 0);
+  if (o.m) put(o.m, `Tenant mood ${o.m > 0 ? "+" : ""}${o.m}`);
+  if (s) put(s, `Your sanity ${s > 0 ? "+" : ""}${s}`);
+  if (o.r) put(o.r, `Their rent ${o.r > 0 ? "+" : ""}${o.r}`);
+  if (o.all) put(o.all, `Everyone's mood ${o.all > 0 ? "+" : ""}${o.all}`);
+  if (o.gain) up.push(`+${o.gain} Coins`);
+  if (o.rep) put(o.rep, `Reputation ${o.rep > 0 ? "+" : ""}${o.rep}`);
+  if (o.cost) down.push(`Costs ${o.cost} Coins`);
+  if (o.cur) down.push(`They now pay in ${o.cur}`);
+  if (o.evict) down.push("Tenant leaves immediately");
+  if (o.risk) down.push(`Risk: ${RISKS[o.risk]}`);
+  const sane = (o.s !== undefined ? o.s : -(o.m || 0)) > 0;
+  if (sane && !o.evict) down.push(`${Math.round(backlashChance() * 100)}% backlash risk`);
+  return {up: up.join(", "), down: down.join(", ")};
+}
+function optionButton(title, up, down, onClick, disabled) {
+  const b = document.createElement("button");
+  b.className = "opt"; b.disabled = !!disabled;
+  const add = (tag, cls, text) => { if (!text) return; const e = document.createElement(tag); e.className = cls; e.textContent = text; b.appendChild(e); };
+  add("b", "", title); add("small", "up", up); add("small", "down", down);
+  b.addEventListener("click", onClick);
+  return b;
+}
+function openDialog(kind, unit) {
+  dialog = {kind, unit};
+  const opts = $("dlgOpts"); opts.innerHTML = "";
+  $("dlgClose").hidden = kind === "over" || kind === "mini";
+  $("mini").hidden = kind !== "mini"; $("mini").innerHTML = "";
+  if (kind === "mini") { $("dlgTitle").textContent = MINIS[mini.type].title; $("dlgBody").textContent = MINIS[mini.type].text; buildMini(); $("scrim").hidden = false; return; }
+  if (kind === "issue") {
+    const t = S.units[unit].tenant;
+    $("dlgTitle").textContent = t.issue.title;
+    $("dlgBody").textContent = t.issue.desc;
+    t.issue.opts.forEach((o, k) => {
+      const so = scaleOpt(o), tr = tradeoffs(so), broke = so.cost && (S.till.Coins || 0) < so.cost;
+      opts.appendChild(optionButton(o.l, tr.up, tr.down + (broke ? " (you can't afford it)" : ""),
+        () => { resolveIssue(unit, k); closeDialog(); render(); }, broke));
+    });
+  } else if (kind === "apply") {
+    $("dlgTitle").textContent = `Unit ${unit + 1}: applicants`;
+    $("dlgBody").textContent = "Pick who moves in. Higher rent usually comes with a worse mood.";
+    S.units[unit].candidates.forEach((c, k) => {
+      opts.appendChild(optionButton(`${c.name} · ${c.personality}`, `${c.rent} ${c.currency} per cycle, mood ${c.mood}`, c.blurb,
+        () => { moveIn(unit, k); closeDialog(); render(); }));
+    });
+  } else if (kind === "hire") {
+    $("dlgTitle").textContent = "Hire staff";
+    $("dlgBody").textContent = `Staff resolve open issues for you, choosing the way their personality tells them to. Salaries are paid every second. You can have ${STAFF_MAX}.`;
+    makeCandidates().forEach(c => {
+      const T = STAFF_TYPES[c.type];
+      opts.appendChild(optionButton(`${c.name} · ${T.name}`, T.desc, `Salary ${staffSalary(c).toFixed(1)} ${c.cur} per second`, () => { hire(c); closeDialog(); render(); }));
+    });
+  } else if (kind === "event") {
+    const ev = unit;
+    $("dlgTitle").textContent = ev.title; $("dlgBody").textContent = ev.desc;
+    $("dlgClose").hidden = true;   // you have to pick something
+    ev.choices.forEach((c, k) => {
+      const d = describeChoice(c), cost = c.fx && c.fx.coins < 0 ? -scaleFx(c.fx).coins : 0, broke = cost > (S.till.Coins || 0);
+      opts.appendChild(optionButton(c.l, d.up, d.down + (broke ? " (you can't afford it)" : ""), () => { closeDialog(); chooseEvent(ev, k); render(); }, broke && ev.choices.some(x => !(x.fx && x.fx.coins < 0))));
+    });
+  } else if (kind === "shop") {
+    $("dlgTitle").textContent = "Shop";
+    $("dlgBody").textContent = `You have ${tillText()}. Prices rise each tier, and the shop closes for ${SHOP_COOLDOWN}s after a purchase.`;
+    SHOP.forEach((item, k) => {
+      const price = shopPrice(item), broke = (S.till[item.cur] || 0) < price;
+      opts.appendChild(optionButton(item.name, item.desc, `Costs ${price} ${item.cur}` + (broke ? " (you can't afford it)" : ""),
+        () => { buy(k); closeDialog(); render(); }, broke));
+    });
+  } else {
+    let best = 0; try { best = +localStorage.getItem("ln-best-tier") || 0; } catch (e) {}
+    $("dlgTitle").textContent = ({insanity:"You lost your mind", riot:"The tenants rioted", bankrupt:"You went bankrupt", arrested:"You were arrested", overthrown:"The tenants overthrew you"})[S.over] || "Everyone moved out";
+    $("dlgBody").textContent = `You reached Tier ${S.tier} and collected ${tillText()}.` + (best ? ` Your best is Tier ${Math.max(best, S.tier)}.` : "");
+    opts.appendChild(optionButton("Try again", "", "", restart));
+  }
+  $("scrim").hidden = false;
+  const first = opts.querySelector("button:not(:disabled)") || $("dlgClose");
+  first.focus();
+}
+function closeDialog() { dialog = null; $("scrim").hidden = true; }
+function restart() { closeDialog(); quick = null; newGame(); buildGrid(); S.running = true; S.log = ["A fresh lease on life."]; render(); }
+
+$("buyCaps").addEventListener("click", () => { buyCaps(); render(); });
+$("bribe").addEventListener("click", () => { endCrisis("aliens"); render(); });
+$("exterminate").addEventListener("click", () => { endCrisis("rats"); render(); });
+$("stoke").addEventListener("click", () => { stoke(); render(); });
+$("quickBtn").addEventListener("click", () => { pressQuick(); render(); });
+document.addEventListener("keydown", e => { if (quick && quick.type === "key" && e.key.toUpperCase() === quick.key) { pressQuick(); render(); } });
+$("shop").addEventListener("click", () => openDialog("shop"));
+$("hireBtn").addEventListener("click", () => openDialog("hire"));
+$("staffList").addEventListener("click", e => { const b = e.target.closest("[data-fire]"); if (b) { fire(b.dataset.fire); render(); } });
+$("music").addEventListener("click", () => { musicOn = !musicOn; try { localStorage.setItem("ln-music", musicOn ? "1" : "0"); } catch (e) {} render(); });
+$("sound").addEventListener("click", () => { soundOn = !soundOn; try { localStorage.setItem("ln-sound2", soundOn ? "1" : "0"); } catch (e) {} render(); });
+document.addEventListener("click", e => { if (e.target.closest("button")) sfx("click"); });
+$("pause").addEventListener("click", () => { if (S.over) return restart(); S.running = !S.running; render(); });
+$("dlgClose").addEventListener("click", closeDialog);
+$("scrim").addEventListener("click", e => { if (e.target === $("scrim") && dialog && !["over","mini","event"].includes(dialog.kind)) closeDialog(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && dialog && !["over","mini","event"].includes(dialog.kind)) closeDialog(); });
+
+/* ============ Boot + game loop (the web's Heartbeat) ============ */
+function start(saved) {
+  if (saved && saved.units) { S = {notes:[], noteId:0, tEvent:0, tMini:0, tQuick:0, order:100, boiler:100, rep:100, chaos:0, owed:{}, broke:0, tTenEv:0, staff:[], hires:0, tStaffEv:0, crises:{}, spawn:{}, extCd:0, tFire:0, damages:0, shopCooldown:0, banner:null, ...saved}; S.running = false; } else newGame();
+  buildGrid(); render(); drawRooms(0);
+  if (S.over) openDialog("over");
+  let last = performance.now();
+  // One requestAnimationFrame loop: the game updates 10 times a second, the falling objects every frame.
+  let acc = 0;
+  const frame = now => {
+    const dt = Math.min(Math.max(0, now - last) / 1000, 0.5);   // clamp so a sleeping tab can't fast-forward
+    last = now; acc += dt;
+    requestAnimationFrame(frame);   // schedule first, so one bad frame can never stop the game
+    try {
+      if (acc >= 0.1) { tick(acc); miniTick(acc); render(); drawRooms(acc); acc = 0; }
+      drawRain(dt, S.running && !dialog && !S.over);
+      musicTick();
+    } catch (e) { acc = 0; console.error(e); }
+  };
+  requestAnimationFrame(frame);
+}
+window.claude?.hot?.snapshot?.(() => S);
+window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
+</script>
+</body>
+</html>
